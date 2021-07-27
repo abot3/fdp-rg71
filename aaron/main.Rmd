@@ -1,0 +1,109 @@
+---
+title: "botelho3-final-project"
+author: "botelho3"
+date: "26/06/2021"
+output: html_document
+---
+
+```{r include=FALSE}
+source('includes.R')
+source('utils.R')
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(07042020)
+```
+
+```{r include=FALSE}
+#cars_df = readr::read_csv("../../used_truck_data_clean.csv")
+cars_df = readr::read_csv("../../used_truck_data_with_region.csv")
+```
+
+```{r}
+spec(cars_df)
+total_columns = ncol(cars_df)
+west_north_central = c("ND", "MN", "SD", "NE", "IA", "KS", "MO")
+west_south_central = c("OK", "AR", "TX", "LA")
+my_states = c(west_north_central, west_south_central)
+my_df = cars_df[, state=my_states]
+my_df$wheel_system = as.factor(my_df$wheel_system)
+# To allow log(mileage to work make any mileage < 1 == 1) so log goes from -Inf
+# to 0.
+my_df[my_df[, "mileage"] < 1.0, "mileage"] = 1.0
+unique(cars_df$region)
+```
+
+```{r include=FALSE}
+free_memory(cars_df)
+```
+
+#### Initial Experiments
+
+```{r}
+pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year", "listed_date")
+pairs_df = random_rows_from_df(my_df, 0.10)[, pairs_columns]
+pairs(pairs_df, col = "dodgerblue")
+```
+
+Notes from QQ plot. 
+- The relationship of price to mileage looks like it might be better modeled by
+1/x. Log(x) would probably work too because of the orders of magnitude.
+- engine_cylinders and engine_displacement are collinear. Let's use
+engine_displacement since it's an integer not a factor.
+- year is almost perfectly linear + quadratic with price.
+- daysonmarket is nor very useful lots of noise
+
+```{r}
+pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating")
+pairs_df = random_rows_from_df(my_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+- power_hp and torque_lb_ft are colinear
+- maximum_seating is strongly linear with price.
+- wheel system is also strongly linear 
+
+```{r}
+free_memory(pairs_df)
+```
+
+
+```{r}
+fit1 = lm(price ~ year + I(year^2) + engine_displacement + log(mileage) +
+   maximum_seating + wheel_system + power_hp + bed_length +
+  frame_damaged + salvage,
+   data = my_df)
+summary(fit1)
+do_fitted_vs_residual = function(model = NULL, main = "Fitted vs. Residuals",
+                                 remove_outliers = FALSE) {
+  std = sd(resid(model))
+  if (remove_outliers) {
+    keep = resid(model) > -900000 & resid(model) < 900000 
+  } else {
+    keep = rep(TRUE, length(resid(model)))
+  }
+  plot(fitted(model)[keep],
+       resid(model)[keep], col = "dodgerblue", pch = 20,
+       xlab = "Fitted", ylab = "Residuals", main = main)
+  abline(h = 0, col = "darkorange", lwd = 2)
+  keep
+}
+do_fitted_vs_residual(fit1, remove_outliers = FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
