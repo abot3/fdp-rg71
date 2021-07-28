@@ -25,6 +25,11 @@ west_south_central = c("OK", "AR", "TX", "LA")
 my_states = c(west_north_central, west_south_central)
 my_df = cars_df[, state=my_states]
 my_df$wheel_system = as.factor(my_df$wheel_system)
+my_df$exterior_color = as.factor(my_df$exterior_color)
+my_df$interior_color = as.factor(my_df$interior_color)
+my_df$transmission = as.factor(my_df$transmission)
+my_df$region = as.factor(my_df$region)
+my_df$state = as.factor(my_df$state)
 # To allow log(mileage to work make any mileage < 1 == 1) so log goes from -Inf
 # to 0.
 my_df[my_df[, "mileage"] < 1.0, "mileage"] = 1.0
@@ -90,10 +95,96 @@ do_fitted_vs_residual(fit1, remove_outliers = FALSE)
 ```
 
 
+```{r}
+rm(fit1)
+gc()
+```
 
 
 
 
+```{r}
+set.seed(42)
+useful_columns = c(
+#X1 = col_double(),
+#dealer_zip = col_character(),
+ "back_legroom" ,
+#bed" ,
+  "bed_length" ,
+#cabin" ,
+#city" ,
+  "city_fuel_economy" ,
+  "daysonmarket" ,
+  "engine_cylinders" ,
+  "engine_displacement" ,
+  "engine_type" ,
+  "exterior_color" ,
+  "fleet" ,
+  "frame_damaged" ,
+  "franchise_dealer" ,
+  "front_legroom" ,
+  "fuel_tank_volume" ,
+  "fuel_type" ,
+  "has_accidents" ,
+  "height" ,
+  "highway_fuel_economy" ,
+  "horsepower" ,
+  "interior_color" ,
+  "isCab" ,
+  "is_new" ,
+  #latitude" ,
+  "length" ,
+  #listed_date = col_date(format = ""),
+  #listing_color" ,
+  #longitude" ,
+  #make_name" ,
+  "maximum_seating" ,
+  "mileage" ,
+  #model_name" ,
+  "owner_count" ,
+  "salvage" ,
+  "savings_amount" ,
+  "seller_rating" ,
+  "theft_title" ,
+  #transmission" ,
+  #transmission_display" ,
+  "wheel_system" ,
+  #wheel_system_display" ,
+  "wheelbase" ,
+  "width" ,
+  "year" ,
+  "power_hp" ,
+  "power_rpm" ,
+  "torque_lb_ft" ,
+  "torque_rpm" ,
+  "region" ,
+  "state"
+)
+formula_str = formula(paste("price ~", paste("", useful_columns, sep = " ", collapse = " +")))
+fit2_additive_all = lm(formula_str, data = my_df[1:16000,])
+n = length(resid(fit2_additive_all))
+fit2_bic = step(fit2_additive_all, direction = "backward", k = log(n))
+fit2_bic_final = fit2_bic
+```
+
+```{r}
+summary(fit2_bic_final)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
 
 
 
