@@ -72,7 +72,7 @@ free_memory(pairs_df)
 
 
 ```{r}
-fit1 = lm(price ~ year + I(year^2) + engine_displacement + log(mileage) +
+fit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
    maximum_seating + wheel_system + power_hp + bed_length +
   frame_damaged + salvage,
    data = my_df)
@@ -89,8 +89,38 @@ do_fitted_vs_residual = function(model = NULL, main = "Fitted vs. Residuals",
        resid(model)[keep], col = "dodgerblue", pch = 20,
        xlab = "Fitted", ylab = "Residuals", main = main)
   abline(h = 0, col = "darkorange", lwd = 2)
-  keep
+  #keep
 }
+do_fitted_vs_residual(fit1, remove_outliers = FALSE)
+```
+```{r identifying_outliers}
+# Rstandard follows normal with mean 0, sd = 1. Look for entries > 2 implies
+# entries that are > 2 stddev from mean.
+count_gt_stddev = c(length(which(rstandard(fit1) > 1)),
+  length(which(rstandard(fit1) > 2)),
+  length(which(rstandard(fit1) > 3)),
+  length(which(rstandard(fit1) > 4)))
+number_of_stddevs = c(1,2,3,4)
+model_results = data.frame(number_of_stddevs, count_gt_stddev)
+colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+knitr::kable(model_results)
+
+# Do some Cook's distance tests. The intersection of high-outlier, 
+# high-influence is 95%. Let's remove these from the dataset.
+high_influence_rows = which(cooks.distance(fit1) > 4/length(fit1$residuals))
+intersection_of_high_inf_high_outlier = intersect(which(rstandard(fit1) > 4), high_influence_rows)
+length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+```
+
+```{r refit with outliers removed.}
+# There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
+# fitted vs. residuals plot becomes waaaay more useful.
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+fit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+   maximum_seating + wheel_system + power_hp + bed_length +
+  frame_damaged + salvage,
+   data = my_df[-outlier_rows_to_remove, ])
+summary(fit1)
 do_fitted_vs_residual(fit1, remove_outliers = FALSE)
 ```
 
@@ -146,7 +176,7 @@ useful_columns = c(
   "savings_amount" ,
   "seller_rating" ,
   "theft_title" ,
-  #transmission" ,
+  "transmission" ,
   #transmission_display" ,
   "wheel_system" ,
   #wheel_system_display" ,
@@ -172,20 +202,16 @@ summary(fit2_bic_final)
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
+```{r}
 
 ```
 
+
+
+TODO
+
+- try and remove the outliers on the residuals/fitted plot
+- try and reduce the number of predictors.
 
 
 
