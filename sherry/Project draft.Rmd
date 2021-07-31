@@ -1,0 +1,255 @@
+---
+title: "Project Draft - STAT 420, Summer 2021"
+date: ''
+output:
+  html_document: 
+    theme: readable
+    toc: yes
+  pdf_document: default
+urlcolor: cyan
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80, fig.align = "center")
+```
+
+```{r}
+car_data = read.csv("used_truck_data_clean.csv")
+# price is our response variable in the dataset
+head(car_data$price)
+```
+
+# data preprocess
+```{r}
+library(usa)
+zcs = usa::zipcodes
+zcs = zcs[c("zip", "state")]
+head(zcs)
+car_data = merge(car_data, zcs, by.x = "dealer_zip", by.y = "zip")
+```
+
+```{r}
+# region name 
+pacific = c("WA", "OR", "CA", "AK", "HI")  
+mountain = c("MT", "ID", "WY", "NV", "UT", "CO", "AZ", "NM")
+west_north_central = c("ND", "MN", "SD", "NE", "IA", "KS", "MO")
+west_south_central = c("OK", "AR", "TX", "LA")
+east_north_central = c("WI", "MI", "IL", "IN", "OH")
+east_south_central = c("KY", "TN", "MS", "AL") 
+new_england = c("ME", "VT", "NH", "MA","RI","CT")
+mid_atlantic = c("NY", "PA", "NJ")
+south_atlantic = c("MD","DE", "WV", "VA", "NC", "SC", "GA", "FL", "DC") 
+
+## add region
+car_data$region = "Other"
+car_data[car_data$state %in% pacific,]$region = "Pacific"
+car_data[car_data$state %in% mountain,]$region = "Moutain"
+car_data[car_data$state %in% west_north_central,]$region = "West North Central"
+car_data[car_data$state %in% west_south_central,]$region = "West South Central"
+car_data[car_data$state %in% east_north_central,]$region = "East North Central"
+car_data[car_data$state %in% east_south_central,]$region = "East South Central"
+car_data[car_data$state %in% new_england,]$region = "New England"
+car_data[car_data$state %in% mid_atlantic,]$region = "Mid Atlantic"
+car_data[car_data$state %in% south_atlantic,]$region = "South Atlantic"
+table(car_data$power_rpm)
+str(car_data)
+```
+
+```{r}
+# get rid of non-necessary columns
+drops = c("dealer_zip", "city", "listed_date", "model_name", "listed_color")
+car_data = car_data[ , !(names(car_data) %in% drops)]
+
+# convert data format
+car_data$power_rpm = as.numeric(gsub(",","",car_data$power_rpm))
+car_data$torque_rpm = as.numeric(gsub(",","",car_data$torque_rpm))
+library(dplyr)
+car_data = car_data %>% mutate_if(is.character,as.factor)
+str(car_data)
+```
+#some useful functions
+```{r}
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+cal_rmse = function(model){
+  sqrt(mean(resid(model) ^ 2))
+}
+calc_loocv_rmse = function(model) { 
+   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+# Modeling for new england
+```{r}
+# base model
+new_england_data = car_data[car_data$region == "New England",]
+base_england_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = new_england_data)
+summary(base_england_model)
+calc_loocv_rmse(base_england_model)
+cal_rmse(base_england_model)
+#base_data = new_england_data[c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", #"transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer")]
+#pairs(new_england_data)
+```
+
+```{r}
+# base model + state, state is significant
+drops = c("region")
+new_england_data = new_england_data[ , !(names(new_england_data) %in% drops)]
+base_england_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = new_england_data)
+summary(base_england_model_state)
+calc_loocv_rmse(base_england_model_state)
+cal_rmse(base_england_model_state)
+anova(base_england_model, base_england_model_state)
+```
+
+```{r}
+# mega model
+mega_england_model = lm(price~., data =new_england_data)
+calc_loocv_rmse(mega_england_model)
+cal_rmse(mega_england_model)
+```
+
+```{r}
+n = length(resid(mega_england_model))
+model_bic_england_forward = step(base_england_model_state, scope = price ~., direction = "forward", k = log(n))
+summary(model_bic_england_forward)
+calc_loocv_rmse(model_bic_england_forward)
+cal_rmse(model_bic_england_forward)
+```
+
+
+
+```{r}
+# bic_model backward 
+n = length(resid(mega_england_model))
+model_bic_england = step(mega_england_model, direction = "backward", k = log(n),trace = 0)
+summary(model_bic_england)
+calc_loocv_rmse(model_bic_england)
+cal_rmse(model_bic_england)
+car::vif(model_bic_england)
+```
+
+```{r}
+improved_england_model = lm(formula = price ~ back_legroom  + 
+    engine_cylinders + franchise_dealer + front_legroom + fuel_tank_volume + 
+    fuel_type + height + horsepower + isCab + 
+    is_new  + make_name + maximum_seating + mileage + 
+    seller_rating  + wheel_system + wheelbase + 
+    width + year + power_rpm + torque_lb_ft + torque_rpm + state, data = new_england_data)
+summary(improved_england_model)
+calc_loocv_rmse(improved_england_model)
+cal_rmse(improved_england_model)
+
+```
+
+
+# Modeling for mid atlantic
+```{r}
+mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
+drops = c("region")
+mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
+# base model
+base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = mid_altantic_data)
+summary(base_altantic_model)
+calc_loocv_rmse(base_altantic_model)
+cal_rmse(base_altantic_model)
+```
+```{r}
+# base model + state, state is significant
+base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = mid_altantic_data)
+summary(base_altantic_model_state)
+calc_loocv_rmse(base_altantic_model_state)
+cal_rmse(base_altantic_model_state)
+anova(base_altantic_model, base_altantic_model_state)
+```
+
+```{r}
+# mega model
+mega_midat_model = lm(price~., data =mid_altantic_data)
+calc_loocv_rmse(mega_midat_model)
+cal_rmse(mega_midat_model)
+```
+
+```{r}
+# bic_model 
+n = length(resid(mega_midat_model))
+model_bic_midat = step(mega_midat_model, direction = "backward", k = log(n), trace = 0)
+summary(model_bic_midat)
+calc_loocv_rmse(model_bic_midat)
+cal_rmse(model_bic_midat)
+```
+```{r}
+improved_midat_model= lm(formula = price ~ back_legroom + bed_length  + 
+    daysonmarket + franchise_dealer + fuel_tank_volume + 
+    fuel_type + height + highway_fuel_economy + 
+    horsepower + isCab + is_new + longitude + 
+    maximum_seating + mileage + seller_rating + 
+    wheel_system + wheelbase + width + 
+    year  + torque_lb_ft + torque_rpm + state, data = mid_altantic_data)
+summary(improved_midat_model)
+calc_loocv_rmse(improved_midat_model)
+cal_rmse(improved_midat_model)
+```
+
+# Modeling for south atlantic
+```{r}
+south_altantic_data = car_data[car_data$region == "South Atlantic",]
+drops = c("region")
+south_altantic_data = south_altantic_data[ , !(names(south_altantic_data) %in% drops)]
+# base model
+base_south_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = south_altantic_data)
+summary(base_south_altantic_model)
+calc_loocv_rmse(base_south_altantic_model)
+cal_rmse(base_south_altantic_model)
+```
+
+```{r}
+# base model + state, state is significant
+base_south_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = south_altantic_data)
+summary(base_south_altantic_model_state)
+calc_loocv_rmse(base_south_altantic_model_state)
+cal_rmse(base_south_altantic_model_state)
+anova(base_south_altantic_model, base_south_altantic_model_state)
+```
+
+
+```{r}
+# mega model  
+mega_southat_model = lm(price~., data =south_altantic_data)
+summary(mega_southat_model)
+calc_loocv_rmse(mega_southat_model)
+cal_rmse(mega_southat_model)
+```
+
+```{r}
+# bic_model 
+n = length(resid(mega_southat_model))
+model_bic_southat = step(mega_southat_model, direction = "backward", trace = 0)
+summary(model_bic_southat)
+calc_loocv_rmse(model_bic_southat)
+cal_rmse(model_bic_southat)
+```
+```{r}
+improved_southat_model = lm(price ~ back_legroom + city_fuel_economy + 
+    engine_cylinders + franchise_dealer + fuel_tank_volume + 
+    has_accidents + height + highway_fuel_economy + 
+    horsepower + isCab + is_new  + 
+    length + maximum_seating + mileage + 
+    salvage + seller_rating + wheel_system + 
+    width + year + power_hp  + torque_lb_ft + torque_rpm + 
+    state, data = south_altantic_data)
+summary(improved_southat_model)
+calc_loocv_rmse(improved_southat_model)
+cal_rmse(improved_southat_model)
+```
+
