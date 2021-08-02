@@ -1,0 +1,131 @@
+---
+title: 'Final Project: Used Pickup Truck Price Prediction'
+authors: "Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)"
+date: ''
+output:
+  html_document: 
+    theme: readable
+    toc: yes  
+  pdf_document: default
+urlcolor: cyan
+---
+
+***
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+library(knitr)
+library(readr)
+library(broom)
+library(Metrics)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
+```{r}
+set.seed(12345)
+```
+
+---
+
+### Introduction
+In this statistical study we have conducted an analysis of used pickup truck prices as a response to changes in variable data collected from scraping [Cargurus](https://www.cargurus.com/) inventory in September 2020. The dataset, which was pulled from [Kaggle](https://www.kaggle.com/ananaymital/us-used-cars-dataset), contains observations from the US used car market and was subset to isolate data by `body_type == Pickup Truck`. It was further tailored to highlight relevant variables that provide insights toward predicting our response variable, `price`.
+
+The impetus for our carrying out this analysis was COVID-19. During the pandemic, with unprecedented migration between urban and rural centers, the prices of used vehicles experienced a notable surge. Additionally, the inventory of said vehicles declined in the US, up to 20% year-over-year in some regions. This piqued our interest as a great opportunity to explore significant indicators influencing used pickup truck prices throughout the states.
+
+The prepared dataset is comprised of the following variables:
+
+|Name   |Type   |Description   |
+|:------|:------|:-------------|
+|`back_legroom` |`num` |Legspace for backseat passengers in inches |
+|`bed` |`Factor w/ 4 levels` |Type of truck bed (Long, Short, etc.) |
+|`bed_length` |`num` |Length of truck bed in inches |
+|`cabin` |`Factor w/ 5 levels`|Type of passenger cabin (Crew Cab, Extended Cab, etc.) |
+|`city` |`Factor w/ 4060 levels` |City where vehicle is being sold |
+|`city_fuel_economy` |`num` |MPG mileage in city |
+|`daysonmarket` |`num` |Number of days listed for sale |
+|`dealer_zip` |`Factor w/ 6897 levels` | Zip code of dealer |
+|`engine_cylinders` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`engine_displacement` |`num` |Engine displacement volume |
+|`engine_type` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`exterior_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`fleet` |`logi` |- - - |
+|`frame_damaged` |`logi` |Indicator for frame damage |
+|`franchise_dealer` |`logi` |- - - |
+|`front_legroom` |`num` |Legspace for frontseat passengers in inches |
+|`fuel_tank_volume` |`num` |Capacity of the fuel tank |
+|`fuel_type` |`Factor w/ 5 levels` |Type of fuel the vehicle uses to operate |
+|`has_accidents` |`logi` |Indicator for whether or not the vehicle has been in an accident |
+|`height` |`num` |Height of vehicle in inches |
+|`highway_fuel_economy` |`num` |MPG mileage in highway |
+|`horsepower` |`num` |Vehicle horsepower |
+|`interior_color` |`Factor w/ 10 levels` |Interior color of vehicle |
+|`isCab` |`logi` |- - - |
+|`is_new` |`logi` |Indicator for a new car |
+|`latitude` |`num` |Geographic latitude |
+|`length` |`num` |Length of the vehicle in inches |
+|`listed_date` |`chr` |Date vehicle was listed for sale |
+|`listing_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`longitude` |`num` |Geographic longitude |
+|`make_name` |`Factor w/ 17 levels` |Manufacturer name |
+|`maximum_seating` |`num` |Maximum number of seats in vehicle |
+|`mileage` |`num` |Odometer reading |
+|`model_name` |`chr` |Model of vehicle from manufacturer |
+|`owner_count` |`num` |Number of previous owners |
+|`price` |`num` |Sale price of used vehicle (Response) |
+|`salvage` |`logi` |Indicator for vehicle being salvage |
+|`savings_amount` |`num` |- - - |
+|`seller_rating` |`num` |Consumer rating of vehicle seller |
+|`theft_title` |`logi` |- - - |
+|`transmission` |`Factor w/ 2 levels`|Automatic or Manual transmission (A or M) |
+|`transmission_display` |`chr` |Transmission display within vehicle |
+|`wheel_system` |`Factor w/ 5 levels` |Vehicle wheel-system (4WD, 4X2, 2WD, etc.) |
+|`wheel_system_display` |`chr` |Vehicle wheel-system display within vehicle |
+|`wheelbase` |`num` |Wheelbase width in inches |
+|`width` |`num` |Width of vehicle in inches |
+|`year` |`num` |Manufactured year of vehicle |
+|`power_hp` |`num` |- - - |
+|`power_rpm` |`num` |- - - |
+|`torque_lb_ft` |`num` |Vehicle torque in foot pounds |
+|`torque_rpm` |`num` |Vehicle torque RPM |
+|`region` |`Factor w/ 9 levels` |US region of vehicle seller |
+|`state` |`Factor w/ 49 levels` |State of vehicle seller |
+
+In creating a linear regression model around these variables, we aim to (not only) identify the significant predictors of price for used pickup trucks, but to seek and potentially offer strategies for consumers to achieve the best value for their money.
+
+---
+
+### Methods
+```{r}
+# TODO
+```
+
+---
+
+### Results
+
+#### Significant Plots & Things
+```{r}
+# TODO
+```
+
+#### Non-Significant Plots & Things
+```{r}
+# TODO
+```
+
+---
+
+### Discussion
+```{r}
+# TODO
+```
+ 
+---
+
+### Appendix
+```{r}
+# TODO
+```
+
+***
