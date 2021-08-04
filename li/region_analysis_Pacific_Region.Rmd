@@ -1,0 +1,219 @@
+---
+title: "region_analysis_Pacific_Mountain"
+author: "Li Li"
+date: "8/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Utility functions
+
+```{r}
+
+library(dplyr)
+
+# calculate RMSE
+rmse = function(actual, predicted) {
+  
+  sqrt(mean((actual - predicted) ^ 2))
+  
+}
+
+
+# calculate leave one out cross validation
+calc_loocv_rmse = function(model) {
+  
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+  
+}
+
+
+library(readr)
+
+# cars_data = as.data.frame(read_csv("used_truck_data_with_region.csv"))
+
+cars_data = read_csv("used_truck_data_with_region.csv")
+
+cars_data$region = as.factor(cars_data$region)
+
+cars_data$state = as.factor(cars_data$state)
+
+
+
+
+cars_pacific = subset(cars_data, cars_data$region == "Pacific")
+
+cars_mountain = subset(cars_data, cars_data$region == "Mountain")
+
+
+
+
+
+
+
+```
+
+
+
+
+## Pacific Region
+
+
+```{r}
+
+set.seed(420420420)
+
+size_num = 7000
+
+cars_idx = sample(nrow(cars_pacific), size_num)
+
+cars_trn = cars_pacific[cars_idx, ]
+
+cars_tst = cars_pacific[-cars_idx, ]
+
+
+fit_common = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower + maximum_seating + transmission + 
+                  mileage + year + wheel_system + power_hp + bed_length +
+                  cabin + salvage + franchise_dealer + state, data = cars_trn)
+
+
+summary(fit_common)
+
+
+n = length(resid(fit_common))
+
+# Apple BIC
+fit_reduced = step(fit_common, direction = "backward", trace = 0, k = log(n))
+
+summary(fit_reduced)
+
+rmse(cars_trn$price, predict(fit_reduced, cars_trn))
+
+rmse(cars_tst$price, predict(fit_reduced, cars_tst))
+
+calc_loocv_rmse(fit_common)
+
+calc_loocv_rmse(fit_reduced)
+
+
+
+
+
+
+```
+
+
+Reduced model for Pacific region is price ~ engine_displacement + engine_cylinders + 
+    highway_fuel_economy + horsepower + maximum_seating + mileage + 
+    year + wheel_system + bed_length + franchise_dealer
+
+Predictors reduced to 10, R squared 0.71
+
+
+Apply transformation to price
+
+```{r}
+
+fit_reduced2 = lm(log(price) ~ engine_displacement + engine_cylinders + 
+    highway_fuel_economy + horsepower + maximum_seating + mileage + 
+    year + wheel_system + bed_length + franchise_dealer, data = cars_trn)
+
+summary(fit_reduced2)
+
+rmse(log(cars_trn$price), predict(fit_reduced2, cars_trn))
+
+rmse(log(cars_tst$price), predict(fit_reduced2, cars_tst))
+
+
+calc_loocv_rmse(fit_reduced2)
+
+
+```
+
+From the final model, R squared improves to 0.82, 10 predictors, RMSE is 0.17
+
+
+
+
+## Mountain Region
+
+```{r}
+
+
+set.seed(420420420)
+
+size_num = 12000
+
+cars_idx = sample(nrow(cars_mountain), size_num)
+
+cars_trn = cars_mountain[cars_idx, ]
+
+cars_tst = cars_mountain[-cars_idx, ]
+
+
+fit_common = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower + maximum_seating + transmission + 
+                  mileage + year + wheel_system + power_hp + bed_length +
+                  cabin + salvage + franchise_dealer + state, data = cars_trn)
+
+
+summary(fit_common)
+
+
+n = length(resid(fit_common))
+
+# Apple BIC
+fit_reduced = step(fit_common, direction = "backward", trace = 0, k = log(n))
+
+summary(fit_reduced)
+
+rmse(cars_trn$price, predict(fit_reduced, cars_trn))
+
+rmse(cars_tst$price, predict(fit_reduced, cars_tst))
+
+calc_loocv_rmse(fit_common)
+
+calc_loocv_rmse(fit_reduced)
+
+
+
+```
+
+
+Reduced model for Mountain region is price ~ highway_fuel_economy + horsepower + maximum_seating + 
+    mileage + year + wheel_system + power_hp + bed_length + salvage + 
+    franchise_dealer + state
+Predictors reduced to 11, R squared 0.72
+
+Apply transformation to price
+
+```{r}
+
+fit_reduced2 = lm(log(price) ~ highway_fuel_economy + horsepower + maximum_seating + 
+    mileage + year + wheel_system + power_hp + bed_length + salvage + 
+    franchise_dealer + state, data = cars_trn)
+
+summary(fit_reduced2)
+
+rmse(log(cars_trn$price), predict(fit_reduced2, cars_trn))
+
+rmse(log(cars_tst$price), predict(fit_reduced2, cars_tst))
+
+
+calc_loocv_rmse(fit_reduced2)
+
+
+```
+
+From the final model, R squared improves to 0.85, 10 predictors, RMSE is 0.16
+
+
+## Comparison
+
+Comparing the models from the two regions, besides the common predictors, pacific region prefers engine_displacement, engine_cylinders, but doesn't have state as predictor.
+Mountain region model prefers power_hp, salvage and state.
+
+
+
