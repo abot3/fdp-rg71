@@ -15,26 +15,132 @@ set.seed(07042020)
 ```{r include=FALSE}
 #cars_df = readr::read_csv("../../used_truck_data_clean.csv")
 cars_df = readr::read_csv("../../used_truck_data_with_region.csv")
+no_char_columns = c(
+#X1 = col_double(),
+#dealer_zip = col_character(),
+ "back_legroom" ,
+#bed" ,
+  "bed_length" ,
+#cabin" ,
+#city" ,
+  "city_fuel_economy" ,
+  "daysonmarket" ,
+  "engine_cylinders" ,
+  "engine_displacement" ,
+  "engine_type" ,
+  "exterior_color" ,
+  "fleet" ,
+  "frame_damaged" ,
+  "franchise_dealer" ,
+  "front_legroom" ,
+  "fuel_tank_volume" ,
+  "fuel_type" ,
+  "has_accidents" ,
+  "height" ,
+  "highway_fuel_economy" ,
+  "horsepower" ,
+  "interior_color" ,
+  "isCab" ,
+  "is_new" ,
+  #latitude" ,
+  "length" ,
+  #listed_date = col_date(format = ""),
+  #listing_color" ,
+  #longitude" ,
+  #make_name" ,
+  "maximum_seating" ,
+  "mileage" ,
+  #model_name" ,
+  "owner_count" ,
+  "salvage" ,
+  #"savings_amount" ,
+  "seller_rating" ,
+  "theft_title" ,
+  "transmission" ,
+  #transmission_display" ,
+  "wheel_system" ,
+  #wheel_system_display" ,
+  "wheelbase" ,
+  "width" ,
+  "year" ,
+  "power_hp" ,
+  "power_rpm" ,
+  "torque_lb_ft" ,
+  "torque_rpm" ,
+  "region" ,
+  "state"
+)
+no_char_additive_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
 ```
 
 ```{r}
 spec(cars_df)
 total_columns = ncol(cars_df)
+cars_df$wheel_system = as.factor(cars_df$wheel_system)
+cars_df$exterior_color = as.factor(cars_df$exterior_color)
+cars_df$interior_color = as.factor(cars_df$interior_color)
+cars_df$transmission = as.factor(cars_df$transmission)
+cars_df$region = as.factor(cars_df$region)
+cars_df$state = as.factor(cars_df$state)
 west_north_central = c("ND", "MN", "SD", "NE", "IA", "KS", "MO")
 west_south_central = c("OK", "AR", "TX", "LA")
 my_states = c(west_north_central, west_south_central)
-my_df = cars_df[, state=my_states]
-my_df$wheel_system = as.factor(my_df$wheel_system)
-my_df$exterior_color = as.factor(my_df$exterior_color)
-my_df$interior_color = as.factor(my_df$interior_color)
-my_df$transmission = as.factor(my_df$transmission)
-my_df$region = as.factor(my_df$region)
-my_df$state = as.factor(my_df$state)
+my_df = cars_df[cars_df["state"] == my_states, ]
+# my_df$wheel_system = as.factor(my_df$wheel_system)
+# my_df$exterior_color = as.factor(my_df$exterior_color)
+# my_df$interior_color = as.factor(my_df$interior_color)
+# my_df$transmission = as.factor(my_df$transmission)
+# my_df$region = as.factor(my_df$region)
+# my_df$state = as.factor(my_df$state)
 # To allow log(mileage to work make any mileage < 1 == 1) so log goes from -Inf
 # to 0.
 my_df[my_df[, "mileage"] < 1.0, "mileage"] = 1.0
-unique(cars_df$region)
+#unique(cars_df$region)
+unique(my_df$region)
+unique(my_df$state)
+unique(my_df$year)
+hist(my_df$year, breaks=length(unique(my_df$year)))
 ```
+
+```{r identifying_extreme_outliers_in_cars_df}
+# Rstandard follows normal with mean 0, sd = 1. Look for entries > 2 implies
+# entries that are > 2 stddev from mean.
+#fit0 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+#   maximum_seating + wheel_system + power_hp + bed_length +
+#  frame_damaged + salvage,
+#   data = cars_df)
+fit0 = lm(no_char_additive_formula, data = cars_df)
+summary(fit0)
+count_gt_stddev = c(length(which(rstandard(fit0) > 1)),
+  length(which(rstandard(fit0) > 2)),
+  length(which(rstandard(fit0) > 3)),
+  length(which(rstandard(fit0) > 4)))
+number_of_stddevs = c(1,2,3,4)
+model_results = data.frame(number_of_stddevs, count_gt_stddev)
+colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+knitr::kable(model_results)
+
+# Do some Cook's distance tests. The intersection of high-outlier, 
+# high-influence is 95%. Let's remove these from the dataset.
+high_influence_rows = which(cooks.distance(fit0) > 4/length(fit0$residuals))
+intersection_of_high_inf_high_outlier = intersect(which(rstandard(fit0) > 4), high_influence_rows)
+length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+
+# Let's take a look at the outlier rows to see if there's any commonality.
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = cars_df[outlier_rows_to_remove, ]
+unique(cars_df[,"year"])
+
+# Ugh there's some major red flags in the outliers
+# The ford f150 with 1111111 miles
+cars_df[cars_df[,"mileage"] == 1111111, ]
+cars_df[cars_df[,"mileage"] == 1111111, ]
+cars_df[cars_df[, "mileage"] == 4290461, ] # 4 million miles??? 50775 $?
+cars_df[cars_df[, "mileage"] == 213353, ] #  200k, 7k tundra
+# So many Jeep Gladiators in outliers.
+cars_df[cars_df[,"model_name"] == c("gladiator", "Gladiator"), ]
+```
+
 
 ```{r include=FALSE}
 free_memory(cars_df)
@@ -57,7 +163,7 @@ engine_displacement since it's an integer not a factor.
 - daysonmarket is nor very useful lots of noise
 
 ```{r}
-pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating")
+pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
 pairs_df = random_rows_from_df(my_df, 0.10)[, pairs_columns2]
 pairs(pairs_df, col = "darkorange")
 ```
@@ -92,8 +198,10 @@ do_fitted_vs_residual = function(model = NULL, main = "Fitted vs. Residuals",
   #keep
 }
 do_fitted_vs_residual(fit1, remove_outliers = FALSE)
+qqnorm(resid(fit1), main = "Normal Q-Q Plot, fit1", col = "darkgrey")
+qqline(resid(fit1), col = "dodgerblue", lwd = 2)
 ```
-```{r identifying_outliers}
+```{r identifying_outliers_my_data}
 # Rstandard follows normal with mean 0, sd = 1. Look for entries > 2 implies
 # entries that are > 2 stddev from mean.
 count_gt_stddev = c(length(which(rstandard(fit1) > 1)),
@@ -108,18 +216,28 @@ knitr::kable(model_results)
 # Do some Cook's distance tests. The intersection of high-outlier, 
 # high-influence is 95%. Let's remove these from the dataset.
 high_influence_rows = which(cooks.distance(fit1) > 4/length(fit1$residuals))
-intersection_of_high_inf_high_outlier = intersect(which(rstandard(fit1) > 4), high_influence_rows)
-length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+intersection_of_high_inf_high_outlier = intersect(which(rstandard(fit1) > 3), high_influence_rows)
+length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] 
+
+# Let's take a look at the outlier rows to see if there's any commonality.
+mydf_outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = my_df[mydf_outlier_rows_to_remove, ]
+unique(my_df[,"year"])
+
+# Ugh there's some major red flags in the outliers
+# The ford f150 with 1111111 miles
+cars_df[cars_df[,"mileage"] == 1111111, ]
+cars_df[cars_df[,"mileage"] == 1111111, ]
+cars_df[cars_df[,"model_name"] == c("gladiator", "Gladiator"), ]
 ```
 
 ```{r refit with outliers removed.}
 # There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
 # fitted vs. residuals plot becomes waaaay more useful.
-outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
 fit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
    maximum_seating + wheel_system + power_hp + bed_length +
   frame_damaged + salvage,
-   data = my_df[-outlier_rows_to_remove, ])
+   data = my_df[-mydf_outlier_rows_to_remove, ])
 summary(fit1)
 do_fitted_vs_residual(fit1, remove_outliers = FALSE)
 ```
@@ -129,8 +247,6 @@ do_fitted_vs_residual(fit1, remove_outliers = FALSE)
 rm(fit1)
 gc()
 ```
-
-
 
 
 ```{r}
@@ -173,7 +289,7 @@ useful_columns = c(
   #model_name" ,
   "owner_count" ,
   "salvage" ,
-  "savings_amount" ,
+  #"savings_amount" ,
   "seller_rating" ,
   "theft_title" ,
   "transmission" ,
@@ -191,14 +307,18 @@ useful_columns = c(
   "state"
 )
 formula_str = formula(paste("price ~", paste("", useful_columns, sep = " ", collapse = " +")))
-fit2_additive_all = lm(formula_str, data = my_df[1:16000,])
+fit2_additive_all = lm(formula_str, data = my_df[-mydf_outlier_rows_to_remove,])
 n = length(resid(fit2_additive_all))
 fit2_bic = step(fit2_additive_all, direction = "backward", k = log(n))
 fit2_bic_final = fit2_bic
 ```
 
+
 ```{r}
 summary(fit2_bic_final)
+do_fitted_vs_residual(fit1, remove_outliers = FALSE)
+qqnorm(resid(fit2_bic_final), main = "Normal Q-Q Plot, fit_1", col = "darkgrey")
+qqline(resid(fit2_bic_final), col = "dodgerblue", lwd = 2)
 ```
 
 
