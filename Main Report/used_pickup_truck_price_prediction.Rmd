@@ -19,11 +19,15 @@ library(readr)
 library(broom)
 library(Metrics)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
+source("Appendix/utility_functions.R")
 ```
 
 ###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
-```{r}
+```{r import_cleaned_data, include = FALSE}
 set.seed(12345)
+# TODO(anyone) - How should we import the csv data without adding it to the git repo?
+# For now just copy the .csv into your local git directory?
+truck_df = readr::read_csv("used_truck_data_with_region.csv")
 ```
 
 ---
@@ -100,9 +104,48 @@ In creating a linear regression model around these variables, we aim to (not onl
 # TODO
 ```
 
+#### Data Cleaning
+```{r}
+# TODO
+```
+
+
+#### Outlier Analysis
+```{r}
+#rstandard 
+#cooks.distance 
+#2 Naive Models (mega model and “common” model) - Aaron or Anyone 
+```
+#### Discussion of Per - Region Models
+```{r}
+# Sherry’s Analysis + Discussion (including model per region, as it’s significant
+# – but creates add’l work -- include sample of regions) - Sherry 
+# Plots: F v R, QQ, normality hist (?) 
+# Target metrics 
+# bp & shapiro (improvement?) 
+
+```
+
+#### ANOVA Analysis of Global Model
+```{r}
+#ANOVA analysis to reduce predictors (global) - Sherry 
+
+```
+
+#### Variable Transformations
+```{r}
+#Li wizardry with the log(price) transformation - Li 
+
+```
+
+
 ---
 
 ### Results
+```{r}
+# Run prediction on Test data and present result analysis 
+
+```
 
 #### Significant Plots & Things
 ```{r}
