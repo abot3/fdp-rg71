@@ -149,9 +149,9 @@ set_data_structure = function(dataset) {
 }
 
 # clean up data
-used_truck_data = clean_dataset({{ IMPORTED_CSV_FILE  }})
+#used_truck_data = clean_dataset({{ IMPORTED_CSV_FILE  }})
 
 # verify data set
-nrow(used_truck_data)
-str(used_truck_data)
-View(used_truck_data)
+#nrow(used_truck_data)
+#str(used_truck_data)
+#View(used_truck_data)

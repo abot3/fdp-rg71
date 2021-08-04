@@ -14,12 +14,14 @@ urlcolor: cyan
 
 ```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
 options(scipen = 1, digits = 4, width = 80)
+# TODO(anyone) - do we need to include install.packages commands e.g. tidyverse. 
 library(knitr)
 library(readr)
 library(broom)
 library(Metrics)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 source("Appendix/utility_functions.R")
+source("Appendix/data_cleanup.R")
 ```
 
 ###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
@@ -28,6 +30,73 @@ set.seed(12345)
 # TODO(anyone) - How should we import the csv data without adding it to the git repo?
 # For now just copy the .csv into your local git directory?
 truck_df = readr::read_csv("used_truck_data_with_region.csv")
+spec(truck_df)
+
+# TODO(anyone) - this should be replaced with the relevant parts of Appendix/data_cleanup.R.
+# For now since I'm using used_truck_data_with_region.csv part of data_cleanup.R
+# is already done.
+# Edit - hmm the factorization part seems to be in set_data_structure() fn. Maybe 
+# this works.
+truck_df = set_data_structure(truck_df)
+
+# A list of all columns that are _not_ characters or redundant columns
+# (city, lat, long) in the data frame. The vector of column names can be used
+# in formulas
+no_char_columns = c(
+  #X1 = col_double(),
+  #dealer_zip = col_character(),
+ "back_legroom" ,
+  #bed" ,
+  "bed_length" ,
+  #cabin" ,
+  #city" ,
+  "city_fuel_economy" ,
+  "daysonmarket" ,
+  "engine_cylinders" ,
+  "engine_displacement" ,
+  "engine_type" ,
+  "exterior_color" ,
+  "fleet" ,
+  "frame_damaged" ,
+  "franchise_dealer" ,
+  "front_legroom" ,
+  "fuel_tank_volume" ,
+  "fuel_type" ,
+  "has_accidents" ,
+  "height" ,
+  "highway_fuel_economy" ,
+  "horsepower" ,
+  "interior_color" ,
+  "isCab" ,
+  "is_new" ,
+  #latitude" ,
+  "length" ,
+  #listed_date = col_date(format = ""),
+  #listing_color" ,
+  #longitude" ,
+  #make_name" ,
+  "maximum_seating" ,
+  "mileage" ,
+  #model_name" ,
+  "owner_count" ,
+  "salvage" ,
+  #"savings_amount" ,
+  "seller_rating" ,
+  "theft_title" ,
+  "transmission" ,
+  #transmission_display" ,
+  "wheel_system" ,
+  #wheel_system_display" ,
+  "wheelbase" ,
+  "width" ,
+  "year" ,
+  "power_hp" ,
+  "power_rpm" ,
+  "torque_lb_ft" ,
+  "torque_rpm" ,
+  "region" ,
+  "state"
+)
 ```
 
 ---
@@ -111,11 +180,56 @@ In creating a linear regression model around these variables, we aim to (not onl
 
 
 #### Outlier Analysis
-```{r}
+```{r outlier_analysis_pt1 }
+# Create a formual string for a simple additive model using all non-character columns
+no_char_additive_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+hist(truck_df$year, breaks=length(unique(truck_df$year)))
 #rstandard 
 #cooks.distance 
 #2 Naive Models (mega model and “common” model) - Aaron or Anyone 
+ofit0 = lm(no_char_additive_formula, data = truck_df)
+summary(ofit0)
+count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
+  length(which(rstandard(ofit0) > 2)),
+  length(which(rstandard(ofit0) > 3)),
+  length(which(rstandard(ofit0) > 4)))
+number_of_stddevs = c(1,2,3,4)
+model_results = data.frame(number_of_stddevs, count_gt_stddev)
+colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+knitr::kable(model_results)
+
+# Do some Cook's distance tests. The intersection of high-outlier, 
+# high-influence is 95%. Let's remove these from the dataset.
+high_influence_rows = which(cooks.distance(ofit0) > 4/length(ofit0$residuals))
+intersection_of_high_inf_high_outlier = intersect(which(rstandard(ofit0) > 4), high_influence_rows)
+length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+
+# Let's take a look at the outlier rows to see if there's any commonality.
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove, ]
+unique(truck_df[,"year"])
 ```
+
+```{r refit with outliers removed.}
+# Let's take a look at the outlier rows to see if there's any commonality.
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove, ]
+# There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
+# fitted vs. residuals plot becomes waaaay more useful.
+ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+   maximum_seating + wheel_system + power_hp + bed_length +
+  frame_damaged + salvage,
+   data = truck_df[-outlier_rows_to_remove, ])
+summary(ofit1)
+plot_fitted_resid(ofit1)
+```
+
+
+```{r}
+rm(ofit1)
+gc()
+```
+
 #### Discussion of Per - Region Models
 ```{r}
 # Sherry’s Analysis + Discussion (including model per region, as it’s significant
@@ -123,7 +237,6 @@ In creating a linear regression model around these variables, we aim to (not onl
 # Plots: F v R, QQ, normality hist (?) 
 # Target metrics 
 # bp & shapiro (improvement?) 
-
 ```
 
 #### ANOVA Analysis of Global Model
