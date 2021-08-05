@@ -232,12 +232,83 @@ gc()
 
 #### Discussion of Per - Region Models
 ```{r}
+# Helper functions
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+cal_rmse = function(model){
+  sqrt(mean(resid(model) ^ 2))
+}
+calc_loocv_rmse = function(model) { 
+   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+```{r}
 # Sherry’s Analysis + Discussion (including model per region, as it’s significant
 # – but creates add’l work -- include sample of regions) - Sherry 
 # Plots: F v R, QQ, normality hist (?) 
 # Target metrics 
 # bp & shapiro (improvement?) 
+
+# Modeling for mid atlantic
+mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
+drops = c("region")
+mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
+# base model
+base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = mid_altantic_data)
+summary(base_altantic_model)
+calc_loocv_rmse(base_altantic_model)
+cal_rmse(base_altantic_model)
 ```
+
+```{r}
+# base model + state, state is significant
+base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = mid_altantic_data)
+summary(base_altantic_model_state)
+calc_loocv_rmse(base_altantic_model_state)
+cal_rmse(base_altantic_model_state)
+anova(base_altantic_model, base_altantic_model_state)
+```
+
+```{r}
+# mega model
+mega_midat_model = lm(price~., data =mid_altantic_data)
+calc_loocv_rmse(mega_midat_model)
+cal_rmse(mega_midat_model)
+```
+
+```{r}
+# bic_model 
+n = length(resid(mega_midat_model))
+model_bic_midat = step(mega_midat_model, direction = "backward", k = log(n), trace = 0)
+summary(model_bic_midat)
+calc_loocv_rmse(model_bic_midat)
+cal_rmse(model_bic_midat)
+```
+
+```{r}
+improved_midat_model= lm(formula = price ~ back_legroom + bed_length  + 
+    daysonmarket + franchise_dealer + fuel_tank_volume + 
+    fuel_type + height + highway_fuel_economy + 
+    horsepower + isCab + is_new + longitude + 
+    maximum_seating + mileage + seller_rating + 
+    wheel_system + wheelbase + width + 
+    year  + torque_lb_ft + torque_rpm + state, data = mid_altantic_data)
+summary(improved_midat_model)
+calc_loocv_rmse(improved_midat_model)
+cal_rmse(improved_midat_model)
+```
+
 
 #### ANOVA Analysis of Global Model
 ```{r}
