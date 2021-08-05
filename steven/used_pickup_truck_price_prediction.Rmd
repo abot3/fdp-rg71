@@ -1,0 +1,1176 @@
+---
+title: 'Final Project: Used Pickup Truck Price Prediction'
+authors: "Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)"
+date: ''
+output:
+  html_document: 
+    theme: readable
+    toc: yes  
+  pdf_document: default
+urlcolor: cyan
+---
+
+***
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+library(knitr)
+library(readr)
+library(broom)
+library(Metrics)
+library(tidyverse)
+library(stringr)
+library(dplyr)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
+```{r import_cleaned_data, include = FALSE}
+set.seed(12345)
+# TODO(anyone) - How should we import the csv data without adding it to the git repo?
+
+# POSSIBLE SOLUTION: would it be worth uploading the CSV to google drive or our sharedrive and access it via url?
+
+# For now just copy the .csv into your local git directory?
+truck_df = readr::read_csv("used_truck_data_with_region.csv")
+spec(truck_df)
+
+# set global functions for knitting
+# set dataset structure
+set_data_structure = function(dataset) {
+  # update variable structure
+  dataset$back_legroom = as.numeric(dataset$back_legroom)
+  dataset$bed = as.factor(dataset$bed)
+  dataset$bed_length = as.numeric(dataset$bed_length)
+  dataset$cabin = as.factor(dataset$cabin)
+  dataset$city = as.factor(dataset$city)
+  dataset$dealer_zip = as.factor(dataset$dealer_zip)
+  dataset$engine_cylinders = as.factor(as.numeric(dataset$engine_cylinders))
+  dataset$engine_type = as.factor(as.numeric(dataset$engine_type))
+  dataset$exterior_color = as.factor(dataset$exterior_color)
+  dataset$front_legroom = as.numeric(dataset$front_legroom)
+  dataset$fuel_tank_volume = as.numeric(dataset$fuel_tank_volume)
+  dataset$fuel_type = as.factor(dataset$fuel_type)
+  dataset$height = as.numeric(dataset$height)
+  dataset$interior_color = as.factor(dataset$interior_color)
+  dataset$length = as.numeric(dataset$length)
+  dataset$listing_color = as.factor(dataset$listing_color)
+  dataset$make_name = as.factor(dataset$make_name)
+  dataset$maximum_seating = as.factor(dataset$maximum_seating)
+  dataset$region = as.factor(dataset$region)
+  dataset$state = as.factor(dataset$state)
+  dataset$transmission = as.factor(dataset$transmission)
+  dataset$wheel_system = as.factor(dataset$wheel_system)
+  dataset$wheelbase = as.numeric(dataset$wheelbase)
+  dataset$width = as.numeric(dataset$width)
+  dataset$power_hp = as.numeric(dataset$power_hp)
+  dataset$power_rpm = as.numeric(dataset$power_rpm)
+  dataset$torque_lb_ft = as.numeric(dataset$torque_lb_ft)
+  dataset$torque_rpm = as.numeric(dataset$torque_rpm)
+  dataset$year = as.numeric(dataset$year)
+  dataset
+}
+
+# plot fitted vs residuals
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model),
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+# Q-Q plot
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+# calculate RMSE
+cal_rmse = function(model){
+  sqrt(mean(resid(model) ^ 2))
+}
+
+# calculate leave one out cross validation
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+# delete large object obj, call the garbage collector to trigger garbage collector
+# to clean up deleted obj
+free_memory = function(obj = data.frame()) {
+  rm(obj)
+  gc()
+}
+
+# select a % of random rows in the data frame - rows are chosen using a
+# uniform distribution
+random_rows_from_df = function(df = data.frame(), pct = 0.10) {
+  rowidx = as.integer(runif(round(nrow(df) * 0.10), min = 0, max = nrow(df)))
+  df[rowidx, ]
+}
+
+truck_df = set_data_structure(truck_df)
+
+# A list of all columns that are _not_ characters or redundant columns
+# (city, lat, long) in the data frame. The vector of column names can be used
+# in formulas
+no_char_columns = c(
+  # X1 = col_double(),
+  # dealer_zip = col_character(),
+ "back_legroom" ,
+  # bed" ,
+  "bed_length" ,
+  # cabin" ,
+  # city" ,
+  "city_fuel_economy" ,
+  "daysonmarket" ,
+  "engine_cylinders" ,
+  "engine_displacement" ,
+  "engine_type" ,
+  "exterior_color" ,
+  "fleet" ,
+  "frame_damaged" ,
+  "franchise_dealer" ,
+  "front_legroom" ,
+  "fuel_tank_volume" ,
+  "fuel_type" ,
+  "has_accidents" ,
+  "height" ,
+  "highway_fuel_economy" ,
+  "horsepower" ,
+  "interior_color" ,
+  "isCab" ,
+  "is_new" ,
+  "latitude" ,
+  "length" ,
+  # listed_date = col_date(format = ""),
+  # listing_color" ,
+  "longitude" ,
+  # make_name" ,
+  "maximum_seating" ,
+  "mileage" ,
+  # model_name" ,
+  "owner_count" ,
+  "salvage" ,
+  # "savings_amount" ,
+  "seller_rating" ,
+  "theft_title" ,
+  "transmission" ,
+  # transmission_display" ,
+  "wheel_system" ,
+  # wheel_system_display" ,
+  "wheelbase" ,
+  "width" ,
+  "year" ,
+  "power_hp" ,
+  "power_rpm" ,
+  "torque_lb_ft" ,
+  "torque_rpm" ,
+  "region" ,
+  "state"
+)
+```
+
+---
+
+## Introduction
+In this statistical study we have conducted an analysis of used pickup truck prices as a response to changes in variable data collected from scraping [Cargurus](https://www.cargurus.com/) inventory in September 2020. The dataset, which was pulled from [Kaggle](https://www.kaggle.com/ananaymital/us-used-cars-dataset), contains observations from the US used car market and was subset to isolate data by `body_type == Pickup Truck`. It was further tailored to highlight relevant variables that provide insights toward predicting our response variable, `price`.
+
+The impetus for our carrying out this analysis was COVID-19. During the pandemic, with unprecedented migration between urban and rural centers, the prices of used vehicles experienced a notable surge. Additionally, the inventory of said vehicles declined in the US, up to 20% year-over-year in some regions. This piqued our interest as a great opportunity to explore significant indicators influencing used pickup truck prices throughout the states.
+
+The prepared dataset is comprised of the following variables:
+
+|Name   |Type   |Description   |
+|:------|:------|:-------------|
+|`back_legroom` |`num` |Legspace for backseat passengers in inches |
+|`bed` |`Factor w/ 4 levels` |Type of truck bed (Long, Short, etc.) |
+|`bed_length` |`num` |Length of truck bed in inches |
+|`cabin` |`Factor w/ 5 levels`|Type of passenger cabin (Crew Cab, Extended Cab, etc.) |
+|`city` |`Factor w/ 4060 levels` |City where vehicle is being sold |
+|`city_fuel_economy` |`num` |MPG mileage in city |
+|`daysonmarket` |`num` |Number of days listed for sale |
+|`dealer_zip` |`Factor w/ 6897 levels` | Zip code of dealer |
+|`engine_cylinders` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`engine_displacement` |`num` |Engine displacement volume |
+|`engine_type` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`exterior_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`fleet` |`logi` |- - - |
+|`frame_damaged` |`logi` |Indicator for frame damage |
+|`franchise_dealer` |`logi` |- - - |
+|`front_legroom` |`num` |Legspace for frontseat passengers in inches |
+|`fuel_tank_volume` |`num` |Capacity of the fuel tank |
+|`fuel_type` |`Factor w/ 5 levels` |Type of fuel the vehicle uses to operate |
+|`has_accidents` |`logi` |Indicator for whether or not the vehicle has been in an accident |
+|`height` |`num` |Height of vehicle in inches |
+|`highway_fuel_economy` |`num` |MPG mileage in highway |
+|`horsepower` |`num` |Vehicle horsepower |
+|`interior_color` |`Factor w/ 10 levels` |Interior color of vehicle |
+|`isCab` |`logi` |- - - |
+|`is_new` |`logi` |Indicator for a new car |
+|`latitude` |`num` |Geographic latitude |
+|`length` |`num` |Length of the vehicle in inches |
+|`listed_date` |`chr` |Date vehicle was listed for sale |
+|`listing_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`longitude` |`num` |Geographic longitude |
+|`make_name` |`Factor w/ 17 levels` |Manufacturer name |
+|`maximum_seating` |`num` |Maximum number of seats in vehicle |
+|`mileage` |`num` |Odometer reading |
+|`model_name` |`chr` |Model of vehicle from manufacturer |
+|`owner_count` |`num` |Number of previous owners |
+|`price` |`num` |Sale price of used vehicle (Response) |
+|`salvage` |`logi` |Indicator for vehicle being salvage |
+|`savings_amount` |`num` |- - - |
+|`seller_rating` |`num` |Consumer rating of vehicle seller |
+|`theft_title` |`logi` |- - - |
+|`transmission` |`Factor w/ 2 levels`|Automatic or Manual transmission (A or M) |
+|`transmission_display` |`chr` |Transmission display within vehicle |
+|`wheel_system` |`Factor w/ 5 levels` |Vehicle wheel-system (4WD, 4X2, 2WD, etc.) |
+|`wheel_system_display` |`chr` |Vehicle wheel-system display within vehicle |
+|`wheelbase` |`num` |Wheelbase width in inches |
+|`width` |`num` |Width of vehicle in inches |
+|`year` |`num` |Manufactured year of vehicle |
+|`power_hp` |`num` |- - - |
+|`power_rpm` |`num` |- - - |
+|`torque_lb_ft` |`num` |Vehicle torque in foot pounds |
+|`torque_rpm` |`num` |Vehicle torque RPM |
+|`region` |`Factor w/ 9 levels` |US region of vehicle seller |
+|`state` |`Factor w/ 49 levels` |State of vehicle seller |
+
+In creating a linear regression model around these variables, we set out to (not only) identify the significant predictors of price for used pickup trucks, but to seek, and potentially offer, strategies for consumers to receive the best value for their money.
+
+Our target metrics for a successful model are set as follows:
+
+- $RMSE$ <= 6000
+- $(p - 1)$ <= 35
+- $R^2$ >= 0.8
+
+---
+
+## Methods
+```{r}
+# TODO
+### Basic analysis of variables (significant predictors, identifying collinearity, outliers, etc.).
+### Nothing is done with these variables, just yet, rather we are calling them out as they will likely be highlighted
+### later in the Methods section
+
+### There appears to be significance between certain predictors and the response. Therefore, explore main effects model.
+### This will be the introduction of our naive models and their associated measures (RMSE, R^2)
+
+### Methods used to enhance/improve our model (stepwise model selection, interactions, transformations, etc.)
+
+# Correlation Analysis
+# Scatterplot Matrix
+```
+
+### i. Colinearity Analysis
+```{r Colinearity Analysis}
+# TODO(aaronbotelho, li)
+```
+
+### ii. Outlier Analysis
+```{r Outlier Analysis}
+# create formula for simple additive model omitting all chr data types
+columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
+no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
+hist(truck_df$year, breaks=length(unique(truck_df$year)))
+
+# rstandard 
+# cooks.distance
+# 2 Naive Models (mega model and “common” model) - Aaron or Anyone
+
+ofit0 = lm(no_char_additive_formula, data = truck_df)
+head(summary(ofit0)$coefficients, 10)
+length(coef(ofit0))
+count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
+  length(which(rstandard(ofit0) > 2)),
+  length(which(rstandard(ofit0) > 3)),
+  length(which(rstandard(ofit0) > 4)))
+number_of_stddevs = c(1,2,3,4)
+model_results = data.frame(number_of_stddevs, count_gt_stddev)
+colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+knitr::kable(model_results)
+
+# cooks.distance tests (intersection of high-outlier, high-influence is 95%)
+# remove these data points from the dataset
+high_influence_rows = which(cooks.distance(ofit0) > 4/length(ofit0$residuals))
+intersection_of_high_inf_high_outlier = intersect(which(rstandard(ofit0) > 4), high_influence_rows)
+length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+
+# analyze outlier rows to check for commonality
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove, ]
+unique(truck_df[,"year"])
+```
+
+### iii. Refit Model with Outliers Removed
+```{r Refit Model with Outliers Removed}
+# analyze outlier rows to check for commonality
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove, ]
+
+# modest improvement in R^2 of 0.01 (or 1%)
+# SE decrease of approximately 100
+
+# fitted vs residuals plot
+ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+   maximum_seating + wheel_system + power_hp + bed_length +
+  frame_damaged + salvage,
+   data = truck_df[-outlier_rows_to_remove, ])
+summary(ofit1)
+plot_fitted_resid(ofit1)
+```
+
+```{r}
+rm(ofit1)
+gc()
+```
+
+### iv. Model Analysis for Mid Atlantic Region
+```{r}
+# modeling for mid atlantic
+cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
+car_data = truck_df[, cols_to_keep]
+mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
+drops = c("region")
+mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
+
+# base model
+base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
+                           + salvage + franchise_dealer, data = mid_altantic_data)
+head(summary(base_altantic_model)$coefficients, 10)
+length(coef(base_altantic_model))
+calc_loocv_rmse(base_altantic_model)
+cal_rmse(base_altantic_model)
+```
+
+```{r}
+# base model + state (state is significant)
+base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
+                                 + salvage + franchise_dealer + state, data = mid_altantic_data)
+head(summary(base_altantic_model_state)$coefficients, 10)
+length(coef(base_altantic_model_state))
+calc_loocv_rmse(base_altantic_model_state)
+cal_rmse(base_altantic_model_state)
+anova(base_altantic_model, base_altantic_model_state)
+```
+
+```{r}
+# mega model
+mega_midat_model = lm(price~., data =mid_altantic_data)
+calc_loocv_rmse(mega_midat_model)
+cal_rmse(mega_midat_model)
+```
+
+```{r}
+# bic_model 
+n = length(resid(mega_midat_model))
+model_bic_midat = step(mega_midat_model, direction = "backward", k = log(n), trace = 0)
+head(summary(model_bic_midat)$coefficients, 10)
+length(coef(model_bic_midat))
+calc_loocv_rmse(model_bic_midat)
+cal_rmse(model_bic_midat)
+```
+
+```{r}
+improved_midat_model= lm(formula = price ~ back_legroom + bed_length  + 
+    daysonmarket + franchise_dealer + fuel_tank_volume + 
+    fuel_type + height + highway_fuel_economy + 
+    horsepower + isCab + is_new + longitude + 
+    maximum_seating + mileage + seller_rating + 
+    wheel_system + wheelbase + width + 
+    year  + torque_lb_ft + torque_rpm + state, data = mid_altantic_data)
+head(summary(improved_midat_model)$coefficients, 10)
+length(coef(improved_midat_model))
+calc_loocv_rmse(improved_midat_model)
+cal_rmse(improved_midat_model)
+```
+
+### v. ANOVA Analysis of Global Model
+```{r ANOVA Analysis of Global Model}
+# ANOVA analysis to reduce predictors (global) - Sherry 
+```
+
+### vi. Variable Transformations
+```{r Variable Transformations}
+# Li wizardry with the log(price) transformation - Li 
+```
+
+---
+
+## Results
+```{r}
+# TODO
+### Catalog best models that we arrived at and explored
+### This would be where we can show the base model (naive), the selected base model, the selected base + state, the transformed response model.
+### From here, we should show these model comparisons and make our selection (our global model) and include an explanation as to why this
+### decision was made.
+
+### For the models that we choose not to proceed with, a brief explanation behind why they were not favorable will be sufficient. Perhaps a plot
+### with some commentary stating why it is not an adequate or best model selection.
+```
+
+---
+
+## Discussion
+```{r}
+# TODO
+### A chart of our best / preferred models and their measures can live here. This will likely be our global model as well as our "by-state" model.
+### In this chart, we should include our target measures of LOOCV RMSE, Adjusted R^2, as well as other model diagnostic tests (even if they aren't great).
+### This is a good opportunity to include some narrative around the linear model assumptions (linearity, independence, normality, equal variance).
+
+### Mainly, discussion is used to articulate why our chosen model(s) is the best option.
+
+### Is there room here to include something like a Box-Cox analysis? We should show that while interactions had been attempted, we ultimately stuck with an additive model with a transformation on the response. Furthermore, when we run our predictions, we'll have to remember to convert our outputs back to the appropriate scale and validate the model's prediction accuracy.
+
+### Let's be sure to talk about how we set our targets for the project and why we chose those, since there is expectation around us having explored the
+### balancing of different measures that pertain to the "wellness of fit" of a model.
+```
+
+|Model  |$(p - 1)$ |LOOCV RMSE |Adjusted $R^2$ |BP Test |Shapiro Wilk Test |
+|:------|:---------|:----------|:--------------|:-------|:-----------------|
+|---    |---       |---        |---            |---     |---               |
+
+---
+
+## Appendix
+### i. Data Cleaning
+Using the following code, the dataset downloaded from [Kaggle](https://www.kaggle.com/ananaymital/us-used-cars-dataset) is imported and processed through a series of functions which normalize fields, remove useless variables, and set the data structures within the dataset (numeric, factor, etc.).
+```{r Data Cleaning, eval=FALSE}
+# fix colors function
+fix_colors = function(dataset) {
+  colors = c('gray', 'black', 'white', 'green', 'blue', 'red', 'silver', 'yellow', 'brown')
+  
+  for (i in 1:length(colors)) {
+    dataset[grep(colors[i], dataset, fixed = TRUE)] = colors[i]
+  }
+  
+  dataset = ifelse(dataset %in% colors, dataset, 'other')
+  toupper(dataset)
+}
+
+clean_dataset = function() {
+  # fix empty and NA entries
+  dataset$back_legroom = ifelse(is.na(dataset$back_legroom), 0, dataset$back_legroom)
+  dataset$bed = ifelse(is.na(dataset$bed), 'Not Listed', dataset$bed)
+  dataset$bed_length = ifelse(is.na(dataset$bed_length), 0, dataset$bed_length)
+  dataset$cabin = ifelse(is.na(dataset$cabin), 'Not Listed', dataset$cabin)
+  dataset$fleet = ifelse(is.na(dataset$fleet), FALSE, dataset$fleet)
+  dataset$frame_damaged = ifelse(is.na(dataset$frame_damaged), FALSE, dataset$frame_damaged)
+  dataset$front_legroom = ifelse(is.na(dataset$front_legroom), 0, dataset$front_legroom)
+  dataset$fuel_tank_volume = ifelse(is.na(dataset$fuel_tank_volume), 0, dataset$fuel_tank_volume)
+  dataset$isCab = ifelse(is.na(dataset$isCab), FALSE, dataset$isCab)
+  dataset$has_accidents = ifelse(is.na(dataset$has_accidents), FALSE, dataset$has_accidents)
+  dataset$height = ifelse(is.na(dataset$height), 0, dataset$height)
+  dataset$highway_fuel_economy = ifelse(is.na(dataset$highway_fuel_economy), 0, dataset$highway_fuel_economy)
+  dataset$horsepower = ifelse(is.na(dataset$horsepower), 0, dataset$horsepower)
+  dataset$isCab = ifelse(is.na(dataset$isCab), FALSE, dataset$isCab)
+  dataset$is_new = ifelse(is.na(dataset$is_new), FALSE, dataset$is_new)
+  dataset$length = ifelse(is.na(dataset$length), 0, dataset$length)
+  dataset$maximum_seating = ifelse(is.na(dataset$maximum_seating), 0, dataset$maximum_seating)
+  dataset$mileage = ifelse(is.na(dataset$mileage), 0, dataset$mileage)
+  dataset$owner_count = ifelse(is.na(dataset$owner_count), 0, dataset$owner_count)
+  dataset$salvage = ifelse(is.na(dataset$salvage), FALSE, dataset$salvage)
+  dataset$seller_rating = ifelse(is.na(dataset$seller_rating), 0, dataset$seller_rating)
+  dataset$theft_title = ifelse(is.na(dataset$theft_title), FALSE, dataset$theft_title)
+  dataset$transmission = ifelse(dataset$transmission == 'CVT' | dataset$transmission == 'Dual Clutch', 'A', dataset$transmission)
+  dataset$wheelbase = ifelse(is.na(dataset$wheelbase), 0, dataset$wheelbase)
+  dataset$width = ifelse(is.na(dataset$width), 0, dataset$width)
+  
+  # normalize colors
+  dataset$exterior_color = tolower(dataset$exterior_color)
+  dataset$exterior_color = fix_colors(dataset$exterior_color)
+  dataset$interior_color = tolower(dataset$interior_color)
+  dataset$interior_color = fix_colors(dataset$interior_color)
+  dataset$listing_color = tolower(dataset$listing_color)
+  dataset$listing_color = fix_colors(dataset$listing_color)
+  
+  # remove any remaining NA entries
+  dataset = subset(dataset, !is.na(back_legroom))
+  dataset = subset(dataset, back_legroom != '--')
+  dataset = subset(dataset, !is.na(bed))
+  dataset = subset(dataset, bed_length != '--')
+  dataset = subset(dataset, !is.na(cabin))
+  dataset = subset(dataset, !is.na(city_fuel_economy))
+  dataset = subset(dataset, !is.na(engine_cylinders))
+  dataset = subset(dataset, !is.na(engine_type))
+  dataset = subset(dataset, !is.na(fuel_type))
+  dataset = subset(dataset, !is.na(power))
+  dataset = subset(dataset, !is.na(torque))
+  dataset = subset(dataset, !is.na(transmission))
+  
+  # clean up character data (optimized)
+  reg_num = "[:digit:]+.?[:digit:]?"
+  reg_rpm = "[:digit:],[:digit:]+"
+  
+  dataset$back_legroom = str_extract(dataset$back_legroom, reg_num)
+  dataset$bed_length = str_extract(dataset$bed_length, reg_num)
+  dataset$front_legroom = str_extract(dataset$front_legroom, reg_num)
+  dataset$fuel_tank_volume = str_extract(dataset$fuel_tank_volume, reg_num)
+  dataset$engine_cylinders = str_extract(dataset$engine_cylinders, reg_num)
+  dataset$engine_type = str_extract(dataset$engine_type, reg_num)
+  dataset$height = str_extract(dataset$height, reg_num)
+  dataset$length = str_extract(dataset$length, reg_num)
+  dataset$maximum_seating = str_extract(dataset$maximum_seating, reg_num)
+  dataset$wheelbase = str_extract(dataset$wheelbase, reg_num)
+  dataset$width = str_extract(dataset$width, reg_num)
+  dataset$power_hp = str_extract(dataset$power, reg_num)
+  dataset$power_rpm = str_extract(dataset$power, reg_rpm)
+  dataset$torque_lb_ft = str_extract(dataset$torque, reg_num)
+  dataset$torque_rpm = str_extract(dataset$torque, reg_rpm)
+
+  # remove unnecessary variables
+    dataset = subset(dataset,
+                            select = -c(vin,
+                                        bed_height,
+                                        body_type,
+                                        combine_fuel_economy,
+                                        description,
+                                        franchise_make,
+                                        is_certified,
+                                        is_cpo,
+                                        is_oemcpo,
+                                        listing_id,
+                                        main_picture_url,
+                                        major_options,
+                                        vehicle_damage_category,
+                                        power,
+                                        torque,
+                                        sp_id,
+                                        sp_name,
+                                        trimId,
+                                        trim_name))
+
+  dataset = set_data_structure(dataset)
+  dataset
+}
+
+set_data_structure = function(dataset) {
+  # update variable structure
+  dataset$back_legroom = as.numeric(dataset$back_legroom)
+  dataset$bed = as.factor(dataset$bed)
+  dataset$bed_length = as.numeric(dataset$bed_length)
+  dataset$cabin = as.factor(dataset$cabin)
+  dataset$city = as.factor(dataset$city)
+  dataset$dealer_zip = as.factor(dataset$dealer_zip)
+  dataset$engine_cylinders = as.factor(as.numeric(dataset$engine_cylinders))
+  dataset$engine_type = as.factor(as.numeric(dataset$engine_type))
+  dataset$exterior_color = as.factor(dataset$exterior_color)
+  dataset$front_legroom = as.numeric(dataset$front_legroom)
+  dataset$fuel_tank_volume = as.numeric(dataset$fuel_tank_volume)
+  dataset$fuel_type = as.factor(dataset$fuel_type)
+  dataset$height = as.numeric(dataset$height)
+  dataset$interior_color = as.factor(dataset$interior_color)
+  dataset$length = as.numeric(dataset$length)
+  dataset$listing_color = as.factor(dataset$listing_color)
+  dataset$make_name = as.factor(dataset$make_name)
+  dataset$maximum_seating = as.factor(dataset$maximum_seating)
+  dataset$region = as.factor(dataset$region)
+  dataset$state = as.factor(dataset$state)
+  dataset$transmission = as.factor(dataset$transmission)
+  dataset$wheel_system = as.factor(dataset$wheel_system)
+  dataset$wheelbase = as.numeric(dataset$wheelbase)
+  dataset$width = as.numeric(dataset$width)
+  dataset$power_hp = as.numeric(dataset$power_hp)
+  dataset$power_rpm = as.numeric(dataset$power_rpm)
+  dataset$torque_lb_ft = as.numeric(dataset$torque_lb_ft)
+  dataset$torque_rpm = as.numeric(dataset$torque_rpm)
+  dataset$year = as.numeric(dataset$year)
+  dataset
+}
+
+# clean up data
+used_truck_data = clean_dataset(read_csv({{ CSV_FILE_PATH }}))
+```
+
+### ii. Utility Functions
+```{r Utility Functions, eval=FALSE}
+# plot fitted vs residuals
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model),
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+# Q-Q plot
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+# calculate RMSE
+cal_rmse = function(model){
+  sqrt(mean(resid(model) ^ 2))
+}
+
+# calculate leave one out cross validation
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+# delete large object obj, call the garbage collector to trigger garbage collector
+# to clean up deleted obj
+free_memory = function(obj = data.frame()) {
+  rm(obj)
+  gc()
+}
+
+# select a % of random rows in the data frame - rows are chosen using a
+# uniform distribution
+random_rows_from_df = function(df = data.frame(), pct = 0.10) {
+  rowidx = as.integer(runif(round(nrow(df) * 0.10), min = 0, max = nrow(df)))
+  df[rowidx, ]
+}
+```
+
+### iii. Identify Regions by Latitude/Longitude
+```{r Identify Regions by Latitude/Longitude, eval=FALSE}
+# set placeholder value for region variable in data frame
+used_truck_data$region = "Other"
+
+# set Region 1 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 37.78076828622018 & used_truck_data$latitude > 37.25035741610745 
+                 & used_truck_data$longitude < -121.85307726189703 & used_truck_data$longitude > -122.50488144107447] = "Region 1"
+
+# set Region 2 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 47.78502706081486 & used_truck_data$latitude > 47.12327044705014 
+                 & used_truck_data$longitude < -122.04186361166227 & used_truck_data$longitude > -122.61906067660752] = "Region 2"
+
+# set Region 3 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 32.988394538505275 & used_truck_data$latitude > 32.66950915381749 
+                 & used_truck_data$longitude < -96.55528632692199 & used_truck_data$longitude > -97.48732384279774] = "Region 3"
+
+# set Region 4 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 30.460499890421573 & used_truck_data$latitude > 29.274940284447997 
+                 & used_truck_data$longitude < -97.62876583084027 & used_truck_data$longitude > -98.6657153056594] = "Region 4"
+
+# set Region 5 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 34.14494984518532 & used_truck_data$latitude > 33.68433856779674 
+                 & used_truck_data$longitude < -84.19816278737434 & used_truck_data$longitude > -84.7634847112431] = "Region 5"
+
+# set Region 6 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 28.737108891837234 & used_truck_data$latitude > 27.82339991184241
+                 & used_truck_data$longitude < -81.22261726061794 & used_truck_data$longitude > -82.66780079513585] = "Region 6"
+
+# set Region 7 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 41.010668887052006 & used_truck_data$latitude > 39.34837978601289 
+                 & used_truck_data$longitude < -73.6914252253522 & used_truck_data$longitude > -75.35002087520648] = "Region 7"
+
+# set Region 8 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 42.58129590905933 & used_truck_data$latitude > 42.22364218404111
+                 & used_truck_data$longitude < -70.8183880968727 & used_truck_data$longitude > -71.34541809524895] = "Region 8"
+
+# set Region 9 on latitude / longitude conditions
+used_truck_data$region[used_truck_data$latitude < 43.30313864345386 & used_truck_data$latitude > 41.5380434345939 
+                 & used_truck_data$longitude < -87.20791391134868 & used_truck_data$longitude > -88.34338447422027] = "Region 9"
+
+# set region variable as factor with 9 levels
+used_truck_data$region = as.factor(used_truck_data$region)
+```
+
+### iv. Add State & Region Data via `usa` Package
+```{r Add State & Region Data via usa Package, eval=FALSE}
+# extract US data from 'usa' library and merge with used truck dataset
+library(usa)
+zcs = usa::zipcodes
+zcs = zcs[c("zip", "state")]
+used_truck_data = merge(used_truck_data, zcs, by.x = "dealer_zip", by.y = "zip")
+
+# define regions
+pacific = c("WA", "OR", "CA", "AK", "HI")  
+mountain = c("MT", "ID", "WY", "NV", "UT", "CO", "AZ", "NM")
+west_north_central = c("ND", "MN", "SD", "NE", "IA", "KS", "MO")
+west_south_central = c("OK", "AR", "TX", "LA")
+east_north_central = c("WI", "MI", "IL", "IN", "OH")
+east_south_central = c("KY", "TN", "MS", "AL") 
+new_england = c("ME", "VT", "NH", "MA","RI","CT")
+mid_atlantic = c("NY", "PA", "NJ")
+south_atlantic = c("MD","DE", "WV", "VA", "NC", "SC", "GA", "FL", "DC") 
+
+## add regions to dataset
+used_truck_data$region = "Other"
+used_truck_data[used_truck_data$state %in% pacific,]$region = "Pacific"
+used_truck_data[used_truck_data$state %in% mountain,]$region = "Moutain"
+used_truck_data[used_truck_data$state %in% west_north_central,]$region = "West North Central"
+used_truck_data[used_truck_data$state %in% west_south_central,]$region = "West South Central"
+used_truck_data[used_truck_data$state %in% east_north_central,]$region = "East North Central"
+used_truck_data[used_truck_data$state %in% east_south_central,]$region = "East South Central"
+used_truck_data[used_truck_data$state %in% new_england,]$region = "New England"
+used_truck_data[used_truck_data$state %in% mid_atlantic,]$region = "Mid Atlantic"
+used_truck_data[used_truck_data$state %in% south_atlantic,]$region = "South Atlantic"
+table(used_truck_data$power_rpm)
+str(used_truck_data)
+
+# remove unnecessary columns
+drops = c("dealer_zip", "city", "listed_date", "model_name", "listed_color")
+used_truck_data = used_truck_data[ , !(names(used_truck_data) %in% drops)]
+
+# convert data structure
+used_truck_data$power_rpm = as.numeric(gsub(",","",used_truck_data$power_rpm))
+used_truck_data$torque_rpm = as.numeric(gsub(",","",used_truck_data$torque_rpm))
+used_truck_data = used_truck_data %>% mutate_if(is.character,as.factor)
+str(used_truck_data)
+```
+
+### v. Region Analysis Workflow
+```{r Region Analysis Workflow, eval=FALSE}
+### region analysis steps and model fitting
+region_data = used_truck_data[used_truck_data$region == "{{ REGION }}",] # select data for region
+
+# fit naive base model (using predetermined predictors)
+base_region_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = region_data)
+summary(base_region_model) # view naive model summary
+calc_loocv_rmse(base_region_model) # calculate leave one out cross validation
+cal_rmse(base_region_model) # calculate RMSE
+# select naive base model variables
+base_data = base_region_model[c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer")]
+pairs(base_region_model) # view scatterplot matrix
+
+
+### explore naive base model with state variable, (state is significant)
+drops = c("region") # set field to drop
+base_region_model = base_region_model[ , !(names(base_region_model) %in% drops)] # remove drop field(s)
+# fit model
+base_region_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = region_data)
+summary(base_region_model_state) # view naive model summary
+calc_loocv_rmse(base_region_model_state) # calculate leave one out cross validation
+cal_rmse(base_region_model_state) # calculate RMSE
+anova(base_region_model, base_region_model_state) # compare two models for significance
+
+
+full_region_model = lm(price ~ ., data = region_data) # fit full naive model (using all possible predictors)
+calc_loocv_rmse(full_region_model) # calculate leave one out cross validation
+cal_rmse(full_region_model) # calculate RMSE
+
+
+### apply forward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+full_model_bic_forward = step(base_region_model_state, scope = price ~., direction = "forward", k = log(n)) # select model via forward BIC
+summary(full_model_bic_forward) # view selected model summary
+calc_loocv_rmse(full_model_bic_forward) # calculate leave one out cross validation
+cal_rmse(full_model_bic_forward) # calculate RMSE
+
+
+### apply backward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+region_model_bic = step(full_region_model, direction = "backward", k = log(n),trace = 0) # select model via backward BIC
+summary(region_model_bic) # view selected model summary
+calc_loocv_rmse(region_model_bic) # calculate leave one out cross validation
+cal_rmse(region_model_bic) # calculate RMSE
+car::vif(region_model_bic) # view variance inflation factors
+
+
+### fit improved region model
+improved_region_model = lm(formula = price ~ back_legroom  + 
+                              engine_cylinders + franchise_dealer + front_legroom + fuel_tank_volume + 
+                              fuel_type + height + horsepower + isCab + 
+                              is_new  + make_name + maximum_seating + mileage + 
+                              seller_rating  + wheel_system + wheelbase + 
+                              width + year + power_rpm + torque_lb_ft + torque_rpm + state, data = region_data) # fit model
+summary(improved_region_model) # view improved model summary
+calc_loocv_rmse(improved_region_model) # calculate leave one out cross validation
+cal_rmse(improved_region_model) # calculate RMSE
+```
+
+### vi. Initial Model Exploration of East South Central Region
+```{r Initial Model Exploration of East South Central Region, eval=FALSE}
+# load and clean dataset
+used_truck_data_clean = read_csv('../Dataset/used_truck_data_with_region.csv')
+View(used_truck_data_clean)
+
+used_truck_data = subset(used_truck_data, region == 'East North Central' | region == 'East South Central')
+View(used_truck_data)
+
+used_enc = subset(used_truck_data, region == 'East North Central')
+used_esc = subset(used_truck_data, region == 'East South Central')
+
+# East South Central
+## set structure
+used_esc = set_data_structure(used_esc)
+used_esc = subset(used_esc, select = -region) # remove single factor variable
+
+# fit model w/o large factor or unnecessary variables (dealer_zip, city, listed_date, model_name, transmission_display, torque_rpm, wheel_system_display)
+# (p - 1) = 147
+fit_esc_1 = lm(price ~ . - dealer_zip - city - listed_date - model_name - transmission_display - torque_rpm - wheel_system_display, data = used_esc)
+summary(fit_esc_1)
+
+most_significant_vars = c(back_legroom + bed_length + cabin + city_fuel_economy + daysonmarket + engine_cylinders + franchise_dealer + front_legroom + fuel_tank_volume + fuel_type + highway_fuel_economy + horsepower + interior_color + isCab + is_new + length + make_name + maximum_seating + mileage + owner_count + salvage + transmission + wheel_system + wheelbase + width + year + power_rpm + state)
+
+# fit model w/ most significant variables from fit_esc_1
+# (p - 1) = 111
+fit_esc_2 = lm(price ~ back_legroom
+               + bed_length
+               + cabin
+               + city_fuel_economy
+               + daysonmarket
+               + engine_cylinders
+               + franchise_dealer
+               + front_legroom
+               + fuel_tank_volume
+               + fuel_type
+               + highway_fuel_economy
+               + horsepower
+               + interior_color
+               + isCab
+               + is_new
+               + length
+               + make_name
+               + maximum_seating
+               + mileage
+               + owner_count
+               + salvage
+               + transmission
+               + wheel_system
+               + wheelbase
+               + width
+               + year
+               + power_rpm
+               + state, data = used_esc)
+summary(fit_esc_2)
+
+fit_2_variables = subset(used_esc, select = c(back_legroom, bed_length, cabin, city_fuel_economy, daysonmarket, engine_cylinders, franchise_dealer, front_legroom, fuel_tank_volume, fuel_type, highway_fuel_economy, horsepower, interior_color, isCab, is_new, length, make_name, maximum_seating, mileage, owner_count, price, salvage, transmission, wheel_system, wheelbase, width, year, power_rpm, state))
+pairs(fit_2_variables) # scatterplot matrix
+
+# Select significant model using backward AIC from fit_esc_2
+# (p - 1) = 110
+fit_esc_3 = step(fit_esc_2, direction = 'backward', trace = 0)
+summary(fit_esc_3)
+
+# Select significant model using forward AIC from fit_esc_2
+# (p - 1) = 110
+mod_start = lm(price ~ 1, data = used_esc)
+fit_esc_4 = step(mod_start,
+                 scope = price ~ back_legroom
+                 + bed_length
+                 + cabin
+                 + city_fuel_economy
+                 + daysonmarket
+                 + engine_cylinders
+                 + franchise_dealer
+                 + front_legroom
+                 + fuel_tank_volume
+                 + fuel_type
+                 + highway_fuel_economy
+                 + horsepower
+                 + interior_color
+                 + isCab
+                 + is_new
+                 + length
+                 + make_name
+                 + maximum_seating
+                 + mileage
+                 + owner_count
+                 + salvage
+                 + transmission
+                 + wheel_system
+                 + wheelbase
+                 + width
+                 + year
+                 + power_rpm
+                 + state,
+                  direction = 'forward', trace = 0)
+summary(fit_esc_4)
+
+# Select significant model using backward BIC from fit_esc_2
+# (p - 1) = 105
+n = length(resid(fit_esc_2))
+fit_esc_5 = step(fit_esc_2, direction = 'backward', k = log(n), trace = 0)
+summary(fit_esc_5)
+
+# Select significant model using backward BIC from fit_esc_2
+# (p - 1) = 105
+n = length(resid(fit_esc_2))
+fit_esc_6 = step(mod_start,
+                 scope = price ~ back_legroom
+                 + bed_length
+                 + cabin
+                 + city_fuel_economy
+                 + daysonmarket
+                 + engine_cylinders
+                 + franchise_dealer
+                 + front_legroom
+                 + fuel_tank_volume
+                 + fuel_type
+                 + highway_fuel_economy
+                 + horsepower
+                 + interior_color
+                 + isCab
+                 + is_new
+                 + length
+                 + make_name
+                 + maximum_seating
+                 + mileage
+                 + owner_count
+                 + salvage
+                 + transmission
+                 + wheel_system
+                 + wheelbase
+                 + width
+                 + year
+                 + power_rpm
+                 + state, direction = 'forward', k = log(n), trace = 0)
+summary(fit_esc_6)
+
+# Select significant model using both direction AIC from fit_esc_2
+# (p - 1) = 110
+fit_esc_7 = step(mod_start,
+                 scope = price ~ back_legroom
+                 + bed_length
+                 + cabin
+                 + city_fuel_economy
+                 + daysonmarket
+                 + engine_cylinders
+                 + franchise_dealer
+                 + front_legroom
+                 + fuel_tank_volume
+                 + fuel_type
+                 + highway_fuel_economy
+                 + horsepower
+                 + interior_color
+                 + isCab
+                 + is_new
+                 + length
+                 + make_name
+                 + maximum_seating
+                 + mileage
+                 + owner_count
+                 + salvage
+                 + transmission
+                 + wheel_system
+                 + wheelbase
+                 + width
+                 + year
+                 + power_rpm
+                 + state, direction = 'both', trace = 0)
+summary(fit_esc_7)
+
+# Select significant model using both direction BIC from fit_esc_2
+# (p - 1) = 105
+fit_esc_8 = step(mod_start,
+                 scope = price ~ back_legroom
+                 + bed_length
+                 + cabin
+                 + city_fuel_economy
+                 + daysonmarket
+                 + engine_cylinders
+                 + franchise_dealer
+                 + front_legroom
+                 + fuel_tank_volume
+                 + fuel_type
+                 + highway_fuel_economy
+                 + horsepower
+                 + interior_color
+                 + isCab
+                 + is_new
+                 + length
+                 + make_name
+                 + maximum_seating
+                 + mileage
+                 + owner_count
+                 + salvage
+                 + transmission
+                 + wheel_system
+                 + wheelbase
+                 + width
+                 + year
+                 + power_rpm
+                 + state, direction = 'both', k = log(n), trace = 0)
+summary(fit_esc_8)
+
+# fit model w/ selection of significant variables from fit_esc_2
+# (p - 1) = 47
+fit_esc_9 = lm(price ~ back_legroom
+               + bed_length
+               + city_fuel_economy
+               + engine_cylinders
+               + franchise_dealer
+               + front_legroom
+               + fuel_tank_volume
+               + fuel_type
+               + highway_fuel_economy
+               + horsepower
+               + is_new
+               + length
+               + make_name
+               + maximum_seating
+               + mileage
+               + owner_count
+               + salvage
+               + wheel_system
+               + width
+               + state, data = used_esc)
+summary(fit_esc_9)
+
+# fit model w/ interaction experiments
+# (p - 1) = 80
+fit_esc_10 = lm(price ~ back_legroom
+               * front_legroom
+               * maximum_seating
+               + bed_length
+               + city_fuel_economy
+               * highway_fuel_economy
+               + engine_cylinders
+               + franchise_dealer
+               * make_name
+               + fuel_tank_volume
+               * fuel_type
+               + horsepower
+               + is_new
+               + length
+               * width
+               + mileage
+               + owner_count
+               + salvage
+               + wheel_system
+               + state, data = used_esc)
+summary(fit_esc_10)
+
+# fit model w/ interaction experiments
+# (p - 1) = 87
+fit_esc_11 = lm(price ~ back_legroom
+                * front_legroom
+                * maximum_seating
+                + bed_length
+                + city_fuel_economy
+                * highway_fuel_economy
+                + engine_cylinders
+                * horsepower
+                + franchise_dealer
+                * make_name
+                + fuel_tank_volume
+                * fuel_type
+                + is_new
+                * owner_count
+                * mileage
+                + length
+                * width
+                + salvage
+                + wheel_system
+                + state, data = used_esc)
+summary(fit_esc_11)
+mean_hat_val = mean(hatvalues(fit_esc_11))
+hat_vals = hatvalues(fit_esc_11)
+high_lev_11 = hat_vals[hat_vals > 2 * mean_hat_val] # high leverage
+
+# fitted vs residuals
+plot(fitted(fit_esc_11), resid(fit_esc_11), col = "grey", pch = 20,
+     xlab = "Fitted", ylab = "Residuals", main = "Data from Model 11")
+abline(h = 0, col = "darkorange", lwd = 2)
+
+```
+
+### vii. Refined Model Selection Workflow for East North & South Central Regions
+```{r Refined Model Selection Workflow for East South Central Region, eval=FALSE}
+#-- ENC --#
+# fit naive base model (using predetermined predictors)
+base_region_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = used_enc)
+summary(base_region_model) # view naive model summary
+calc_loocv_rmse(base_region_model) # calculate leave one out cross validation
+cal_rmse(base_region_model) # calculate RMSE
+# select naive base model variables
+base_data = base_region_model[c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer")]
+pairs(base_region_model) # view scatterplot matrix
+
+
+### explore naive base model with state variable, (state is significant)
+drops = c("region") # set field to drop
+used_enc = subset(used_enc, select = -c(region)) # remove drop field(s)
+# fit model
+base_region_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = used_enc)
+summary(base_region_model_state) # view naive model summary
+calc_loocv_rmse(base_region_model_state) # calculate leave one out cross validation
+cal_rmse(base_region_model_state) # calculate RMSE
+anova(base_region_model, base_region_model_state) # compare two models for significance
+
+
+full_region_model = lm(price ~ ., data = used_enc) # fit full naive model (using all possible predictors)
+calc_loocv_rmse(full_region_model) # calculate leave one out cross validation
+cal_rmse(full_region_model) # calculate RMSE
+
+
+### apply forward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+full_model_bic_forward = step(base_region_model_state, scope = price ~., direction = "forward", k = log(n)) # select model via forward BIC
+summary(full_model_bic_forward) # view selected model summary
+calc_loocv_rmse(full_model_bic_forward) # calculate leave one out cross validation
+cal_rmse(full_model_bic_forward) # calculate RMSE
+
+
+### apply backward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+region_model_bic = step(full_region_model, direction = "backward", k = log(n),trace = 0) # select model via backward BIC
+summary(region_model_bic) # view selected model summary
+calc_loocv_rmse(region_model_bic) # calculate leave one out cross validation
+cal_rmse(region_model_bic) # calculate RMSE
+car::vif(region_model_bic) # view variance inflation factors
+
+
+### fit improved region model with transformed response
+improved_region_model = lm(formula = log(price) ~ back_legroom  + 
+                             engine_cylinders + franchise_dealer + front_legroom + fuel_tank_volume + 
+                             fuel_type + height + horsepower + isCab + 
+                             is_new  + make_name + maximum_seating + mileage + 
+                             seller_rating  + wheel_system + wheelbase + 
+                             width + year + power_rpm + torque_lb_ft + torque_rpm + state, data = used_enc) # fit model
+summary(improved_region_model) # view improved model summary
+calc_loocv_rmse(improved_region_model) # calculate leave one out cross validation
+cal_rmse(improved_region_model) # calculate RMSE
+
+
+#-- ESC --#
+# fit naive base model (using predetermined predictors)
+base_region_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = used_esc)
+summary(base_region_model) # view naive model summary
+calc_loocv_rmse(base_region_model) # calculate leave one out cross validation
+cal_rmse(base_region_model) # calculate RMSE
+# select naive base model variables
+base_data = base_region_model[c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer")]
+pairs(base_region_model) # view scatterplot matrix
+
+
+### explore naive base model with state variable, (state is significant)
+drops = c("region") # set field to drop
+base_region_model = base_region_model[ , !(names(base_region_model) %in% drops)] # remove drop field(s)
+# fit model
+base_region_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = used_esc)
+summary(base_region_model_state) # view naive model summary
+calc_loocv_rmse(base_region_model_state) # calculate leave one out cross validation
+cal_rmse(base_region_model_state) # calculate RMSE
+anova(base_region_model, base_region_model_state) # compare two models for significance
+
+
+full_region_model = lm(price ~ ., data = used_esc) # fit full naive model (using all possible predictors)
+calc_loocv_rmse(full_region_model) # calculate leave one out cross validation
+cal_rmse(full_region_model) # calculate RMSE
+
+
+### apply forward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+full_model_bic_forward = step(base_region_model_state, scope = price ~., direction = "forward", k = log(n)) # select model via forward BIC
+summary(full_model_bic_forward) # view selected model summary
+calc_loocv_rmse(full_model_bic_forward) # calculate leave one out cross validation
+cal_rmse(full_model_bic_forward) # calculate RMSE
+
+
+### apply backward BIC search for improved model
+n = length(resid(full_region_model)) # set number of observations
+region_model_bic = step(full_region_model, direction = "backward", k = log(n),trace = 0) # select model via backward BIC
+summary(region_model_bic) # view selected model summary
+calc_loocv_rmse(region_model_bic) # calculate leave one out cross validation
+cal_rmse(region_model_bic) # calculate RMSE
+car::vif(region_model_bic) # view variance inflation factors
+
+
+### fit improved region model with transformed response
+improved_region_model = lm(formula = log(price) ~ back_legroom  + 
+                             engine_cylinders + franchise_dealer + front_legroom + fuel_tank_volume + 
+                             fuel_type + height + horsepower + isCab + 
+                             is_new  + make_name + maximum_seating + mileage + 
+                             seller_rating  + wheel_system + wheelbase + 
+                             width + year + power_rpm + torque_lb_ft + torque_rpm + state, data = used_esc) # fit model
+summary(improved_region_model) # view improved model summary
+calc_loocv_rmse(improved_region_model) # calculate leave one out cross validation
+cal_rmse(improved_region_model) # calculate RMSE
+```
+
+***
