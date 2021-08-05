@@ -69,11 +69,11 @@ no_char_columns = c(
   "interior_color" ,
   "isCab" ,
   "is_new" ,
-  #latitude" ,
+  "latitude" ,
   "length" ,
   #listed_date = col_date(format = ""),
   #listing_color" ,
-  #longitude" ,
+  "longitude" ,
   #make_name" ,
   "maximum_seating" ,
   "mileage" ,
@@ -180,9 +180,15 @@ In creating a linear regression model around these variables, we aim to (not onl
 
 
 #### Outlier Analysis
+
+```{r colinearity analysis}
+# TODO(aaronbotelho, li)
+```
+
 ```{r outlier_analysis_pt1 }
 # Create a formual string for a simple additive model using all non-character columns
-no_char_additive_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
+no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
 hist(truck_df$year, breaks=length(unique(truck_df$year)))
 #rstandard 
 #cooks.distance 
@@ -233,24 +239,24 @@ gc()
 #### Discussion of Per - Region Models
 ```{r}
 # Helper functions
-plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
-  plot(fitted(model), resid(model), 
-       col = pointcol, pch = 20, cex = 1.5,
-       xlab = "Fitted", ylab = "Residuals")
-  abline(h = 0, col = linecol, lwd = 2)
-}
-
-plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
-  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
-  qqline(resid(model), col = linecol, lwd = 2)
-}
-
-cal_rmse = function(model){
-  sqrt(mean(resid(model) ^ 2))
-}
-calc_loocv_rmse = function(model) { 
-   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
-}
+#plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+#  plot(fitted(model), resid(model), 
+#       col = pointcol, pch = 20, cex = 1.5,
+#       xlab = "Fitted", ylab = "Residuals")
+#  abline(h = 0, col = linecol, lwd = 2)
+#}
+#
+#plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+#  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+#  qqline(resid(model), col = linecol, lwd = 2)
+#}
+#
+#cal_rmse = function(model){
+#  sqrt(mean(resid(model) ^ 2))
+#}
+#calc_loocv_rmse = function(model) { 
+#   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+#}
 ```
 
 ```{r}
@@ -261,11 +267,14 @@ calc_loocv_rmse = function(model) {
 # bp & shapiro (improvement?) 
 
 # Modeling for mid atlantic
+cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
+car_data = truck_df[, cols_to_keep]
 mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
 drops = c("region")
 mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
 # base model
-base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = mid_altantic_data)
+base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
+                           + salvage + franchise_dealer, data = mid_altantic_data)
 summary(base_altantic_model)
 calc_loocv_rmse(base_altantic_model)
 cal_rmse(base_altantic_model)
@@ -273,7 +282,8 @@ cal_rmse(base_altantic_model)
 
 ```{r}
 # base model + state, state is significant
-base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer + state, data = mid_altantic_data)
+base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
+                                 + salvage + franchise_dealer + state, data = mid_altantic_data)
 summary(base_altantic_model_state)
 calc_loocv_rmse(base_altantic_model_state)
 cal_rmse(base_altantic_model_state)
