@@ -38,6 +38,7 @@ spec(truck_df)
 # Edit - hmm the factorization part seems to be in set_data_structure() fn. Maybe 
 # this works.
 truck_df = set_data_structure(truck_df)
+truck_df[truck_df[, "mileage"] < 1.0, "mileage"] = 1.0
 
 # A list of all columns that are _not_ characters or redundant columns
 # (city, lat, long) in the data frame. The vector of column names can be used
@@ -178,23 +179,141 @@ In creating a linear regression model around these variables, we aim to (not onl
 # TODO
 ```
 
+#### Naive Models
+
+```{r naive_hypothesis_model, echo=TRUE, results = 'hide'}
+
+```
+
+Before continuing with analysis of our data we fit a naive large additive model
+using all numeric and factor predictors with no interactions. Since $R^2$
+increases and $RMSE$ decreases as more predictors are added, this additive model
+should give us a good fit to the data. Many of the predictors will likely be
+redundant.
+
+Regardless this model will provide a baseline against which we can compare more
+optimized models. It can also be used for analyzing the impact of predictor/response
+transformations or used for outlier analysis.
+
+```{r mega_model, echo=TRUE}
+# Create a formual string for a simple additive model using all non-character columns
+mega_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+mega_model = lm(mega_model_formula, data = truck_df)
+#summary(mega_model)
+print_useful_summary_stats(mega_model)
+```
+
+
 
 #### Outlier Analysis
 
-```{r colinearity analysis}
-# TODO(aaronbotelho, li)
+After cleaning the trucks dataframe our next step in building the pricing model
+is to understand the distribution and correlations in out dataset. Histograms
+are used to determine the distribution of a few columns we expect will be key to
+the final model.
+
+Pairs plots and covariance functions can be used to determine
+the relationship of predictors to each other, and to the response. Any
+predictors with linear relationships in the pairs plot are collinear and will
+likely be redundant in an optimal model. The scatter plots of each predictor
+against the response variable in the pairs plot provides a rough indication of
+which predictors have a linear, quadratic, or logarithmic relationship with the
+response variable.
+
+After determining the column's colinearity and distribution we turn our attention
+to the rows. Our dataset is scraped from a website with user-generated input and
+has not been filtered. There are certain to be many rows with user errors, e.g
+a 10,000$ car being entered as 100,000\$, or a 4 cylinder car being mistakenly
+listed as 6 cylinders. We cannot manually search the data frame for such
+inconsistencies but we can use outlier analysis, and the standardized residual 
+to discover rows that are many standard deviations from the norm and our model.
+
+To perform the outlier analysis we will use a simple additive model using most
+predictors, with a high R^2, low p-value and reasonable standard error. This 
+simple fit allows us to generate residuals and use tools like rstandard and 
+Cook's Distance.
+
+```{r histogram_analysis, echo=FALSE}
+par(mfrow=c(3,2))
+hist(truck_df$year, breaks=length(unique(truck_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+hist(as.integer(truck_df$state), breaks=length(unique(truck_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State")
+hist(truck_df$horsepower, breaks=30,
+     xlab="Horsepower", ylab = "Frequency", main = "Histogram of Horsepower")
+hist(log(truck_df$mileage), breaks=30,
+     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+hist(as.integer(truck_df$maximum_seating), breaks=30,
+     xlab="Maximum Seating", ylab = "Frequency", main = "Histogram of Max seating")
 ```
 
-```{r outlier_analysis_pt1 }
-# Create a formual string for a simple additive model using all non-character columns
+
+```{r colinearity_analysis, echo=FALSE}
+# TODO(aaronbotelho, li)
+pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year", "listed_date")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns]
+pairs(pairs_df, col = "dodgerblue")
+```
+
+Notes from Pairs plot. 
+
+- The relationship of price to mileage looks like it might be better modeled by
+1/x. Log(x) would probably work too because of the orders of magnitude.
+- engine_cylinders and engine_displacement are collinear. Let's use
+engine_displacement since it's an integer not a factor.
+- year is almost perfectly linear + quadratic with price.
+- daysonmarket is nor very useful lots of noise
+
+```{r colinearity_analysis_2, echo=FALSE}
+pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+Notes from Pairs plot.
+
+- power_hp and torque_lb_ft are colinear
+- maximum_seating is strongly linear with price.
+- wheel system is also strongly linear 
+
+```{r colinearity_analysis_3, echo=FALSE}
+pairs_columns2 = c("price", "latitude", "longitude")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+Notes from pairs plot:
+
+- Both latitude and longitude have a linear relationship with price, a
+horizontal line.
+- The variance in price vs. latitude or longitude is constant.
+- Latitude and longitude should not be useful predictors of price.
+- The scatter plot of latitude vs. longitude forms a map of the United States. 
+
+
+```{r colinearity_analysis_4}
+#TODO(anyone) - vif analysis
+```
+
+
+
+```{r colinearity_analysis_last, include=FALSE}
+free_memory(pairs_df)
+```
+
+Next we attempt to identify outliers, observations which do not fit the model well,
+and which may have significant impact on the coefficients of the model. Often
+these observations will often have large residuals.
+
+```{r outlier_analysis_1, results = 'hide'}
+# Create a formula tring for a simple additive model using all non-character columns
 columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
 no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
-hist(truck_df$year, breaks=length(unique(truck_df$year)))
 #rstandard 
 #cooks.distance 
 #2 Naive Models (mega model and “common” model) - Aaron or Anyone 
 ofit0 = lm(no_char_additive_formula, data = truck_df)
-summary(ofit0)
+#summary(ofit0)
 count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
   length(which(rstandard(ofit0) > 2)),
   length(which(rstandard(ofit0) > 3)),
@@ -213,27 +332,70 @@ length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4]
 # Let's take a look at the outlier rows to see if there's any commonality.
 outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
 outlier_df = truck_df[outlier_rows_to_remove, ]
-unique(truck_df[,"year"])
 ```
 
-```{r refit with outliers removed.}
+
+
+```{r outlier_analysis_2, echo=TRUE, results='hide'}
 # Let's take a look at the outlier rows to see if there's any commonality.
 outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
 outlier_df = truck_df[outlier_rows_to_remove, ]
-# There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
-# fitted vs. residuals plot becomes waaaay more useful.
-ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
-   maximum_seating + wheel_system + power_hp + bed_length +
-  frame_damaged + salvage,
-   data = truck_df[-outlier_rows_to_remove, ])
-summary(ofit1)
-plot_fitted_resid(ofit1)
 ```
 
+```{r outlier_analysis_3, echo=FALSE}
+par(mfrow=c(2,2))
+hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State")
+hist(log(outlier_df$mileage), breaks=30,
+     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
 
-```{r}
-rm(ofit1)
-gc()
+# There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
+# fitted vs. residuals plot becomes waaaay more useful.
+#ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+#   maximum_seating + wheel_system + power_hp + bed_length +
+#  frame_damaged + salvage + state,
+#   data = truck_df[-outlier_rows_to_remove, ])
+#summary(ofit1)
+#plot_fitted_resid(ofit1)
+#
+#ofit2 = lm(price ~ year + I(year^2) + engine_displacement + log(mileage) +
+#             I(mileage^2) + mileage +
+#   maximum_seating + wheel_system + power_hp + bed_length +
+#  frame_damaged + salvage + state,
+#   data = truck_df[-outlier_rows_to_remove, ])
+#summary(ofit2)
+#anova(ofit1, ofit2)
+```
+
+Re-fit the mega_model with the outlier observations removed. The outlier rows
+we removed were very influential based on their rstandard and Cook's distance
+results. See if the beta coefficients change significantly or if the RMSE
+changes.
+
+```{r outlier_analysis_4, include=FALSE}
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+ofit2_no_outliers = lm(mega_model_formula, data = truck_df[-outlier_rows_to_remove,])
+#summary(ofit2_no_outliers)
+print_useful_summary_stats(ofit2_no_outliers)
+plot_fitted_resid(ofit2_no_outliers)
+# Percentage change in model coefficients.
+abs((coef(ofit2_no_outliers) - coef(mega_model))/coef(ofit2_no_outliers)) * 100
+#anova(mega_model, ofit2_no_outliers)
+```
+
+It's clear from the code segment above that the RMSE and $R^2$ value of the
+model is mostly unaffected by removal of the outlier rows. However there is a large
+percentage change ~3%-9% in some of the model beta coefficients when refitting
+the model.
+
+
+```{r outlier_analysis_last, include=FALSE}
+free_memory(ofit1)
+free_memory(ofit2)
+free_memory(fit2_additive_all)
 ```
 
 #### Discussion of Per - Region Models

@@ -37,3 +37,15 @@ random_rows_from_df = function(df = data.frame(), pct = 0.10) {
   rowidx = as.integer(runif(round(nrow(df) * 0.10), min = 0, max = nrow(df)))
   df[rowidx, ]
 }
+
+
+print_useful_summary_stats = function(fit) {
+  s = summary(fit)
+  d = c(
+    resid_std_err = c(s$sigma),
+    r.squared = c(s$r.squared),
+    fstatistic = c(s$fstatistic[1]),
+    p.value = c(pf(s$fstatistic[1], df1=s$df[1] - 1, df2=s$df[2], lower.tail = FALSE))
+  )
+  d
+}
