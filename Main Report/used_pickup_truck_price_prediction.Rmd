@@ -21,6 +21,7 @@ library(broom)
 library(Metrics)
 library(faraway)
 library(lmtest)
+library(MASS)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 source("Appendix/utility_functions.R")
 source("Appendix/data_cleanup.R")
@@ -560,8 +561,12 @@ print_useful_summary_stats(improved_mid_altantic_inter_model)
 
 
 #### Variable Transformations
+
+From Box-Cox analysis, Log-Likelihood reaches maximum when $\lambda$ is from 0 to 0.5. Therefore we choose to have a log transformation on price.
+
+
 ```{r}
-# TODO: Li's boxcox
+boxcox(improved_mid_altantic_inter_model, plotit = TRUE)
 ```
 
 ```{r}
