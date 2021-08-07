@@ -410,11 +410,63 @@ From **Scatterplot Matrix (3)**:
 - `latitude` and `longitude` do not appear to be useful predictors of the response
 - The plot of `latitude` vs `longitude` shows a map of the United States 
 
+##### Variance Inflation Factor Analysis
+As a compliment to our `pairs` scatterplot matrices, we examine variance inflation
+factors (`vif`) to determine which predictors are colinear with 1 or more of the
+others. The `vif` measures the proportion of the variance within a single predictor
+that can be explained by a linear combination of the other predictors. A high `vif`
+(>5) indicates colinearity.
+
 ```{r Colinearity Analysis pt. 4, echo=FALSE}
-# TODO(anyone) - vif analysis
+v = vif(full_model)
+v[v > 5]
 ```
 
-```{r Colinearity Analysis pt. 5, include=FALSE}
+##### Key Observations
+
+- `exterior_color` & `interior_color` look to be poor predictors
+  - multiple `exterior_color` values have a high `vif`
+
+- `cylinders`, `engine_type`, `engine_displacement`, `*_fuel_economy`, `horsepower`,
+`power_rpm` and `torque_lb_ft` all have a high `vif`
+-  This supports some of our initial assumptions made, when drawing our hypothesis
+
+- `height`, `length`, and `owner_count` each have particularly high `vif`
+  - We'd like to better understand with which predictors these are colinear
+
+- Multiple `regions` and `states` have a high `vif`
+  - This will become significant, as we seek to build a global prediction model
+
+```{r Colinearity Analysis pt. 5, echo = TRUE, message = FALSE, warning = FALSE}
+full_model_no_region_formula = update.formula(
+  full_model_formula, ~ . -region -latitude -longitude)
+fm1 = lm(full_model_no_region_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(fm1)
+v[v > 5]
+
+# fit with removed state predictor
+full_model_no_state_formula = update.formula(full_model_formula, ~ . -state -latitude -longitude)
+fm2 = lm(full_model_no_state_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(fm2)
+v[v > 5]
+```
+
+The `state` predictor continues to return a high `vif` even with `region` removed
+from the model. It is worth noting that the factor values of `state` with high
+`vif` have changed. TX and NY now return high `vif` values, while AR, CO, NE, NH
+no longer do.
+
+We found it safe to conclude that `state` is colinear with `region`, and that
+individual factors within the `state` variable are colinear with each other.
+
+Removing the `state` predictor results in `region` having a low `vif`. This outcome
+further supports our conclusions on their colinearity.
+
+```{r Colinearity Analysis pt. 6, include=FALSE}
 free_memory(pairs_df)
 ```
 
