@@ -521,12 +521,25 @@ plot_fitted_resid(outlier_fit_add)
 plot_fitted_resid(no_outlier_fit_add)
 ```
 
+&nbsp;
 
 It's clear from the code segment above that the RMSE and $R^2$ value of the
 model is mostly unaffected by removal of the outlier rows. However there is a large
-percentage change ~3%-9% in some of the model beta coefficients when refitting
-the model.
+percentage change, anywhere from 50%-400%, in some of the model beta coefficients
+when refitting the model. Given that there are only ``r count_gt_stddev[4]` outlier rows > 4 stddev``
+and ``r nrow(truck_df)`` in the data frame, this is a significant change.
 
+Therefore we choose to continue the analysis with these influential outliers
+removed from our dataset. Assuming they are user error, and not relevent to our
+model.
+
+&nbsp;
+
+```{r remove_outliers_from_truck_df, echo=TRUE}
+truck_df = truck_df[-outlier_rows_to_remove, ]
+```
+
+&nbsp;
 
 ```{r outlier_analysis_last, include=FALSE}
 #free_memory(ofit1)
@@ -536,9 +549,6 @@ free_memory(no_outlier_fit_add)
 free_memory(outlier_fit_add)
 ```
 
-```{r tbd_remove_outliers_from_truck_df, include=FALSE}
-#truck_df = truck_df[-outlier_rows_to_remove, ]
-```
 
 
 #### Model Exploration And Selection
