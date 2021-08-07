@@ -427,34 +427,54 @@ observations will have large residuals.
 # create formula for simplified additive model omitting character data types
 columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
 no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
-hist(truck_df$year, breaks=length(unique(truck_df$year)))
+outlier_fit_add = lm(no_char_additive_formula, data = truck_df)
+print_useful_summary_stats(outlier_fit_add)
 
 # rstandard 
 # cooks.distance
 # 2 Naive Models ("full" model and “common” model) - Aaron or Anyone
 
-ofit0 = lm(no_char_additive_formula, data = truck_df)
-head(summary(ofit0)$coefficients, 10)
-length(coef(ofit0))
-count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
-  length(which(rstandard(ofit0) > 2)),
-  length(which(rstandard(ofit0) > 3)),
-  length(which(rstandard(ofit0) > 4)))
+# ofit0 = lm(no_char_additive_formula, data = truck_df)
+# head(summary(ofit0)$coefficients, 10)
+# length(coef(ofit0))
+# count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
+#   length(which(rstandard(ofit0) > 2)),
+#   length(which(rstandard(ofit0) > 3)),
+#   length(which(rstandard(ofit0) > 4)))
+# number_of_stddevs = c(1,2,3,4)
+# model_results = data.frame(number_of_stddevs, count_gt_stddev)
+# colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+# knitr::kable(model_results)
+
+count_gt_stddev = c(length(which(rstandard(outlier_fit_add) > 1)),
+  length(which(rstandard(outlier_fit_add) > 2)),
+  length(which(rstandard(outlier_fit_add) > 3)),
+  length(which(rstandard(outlier_fit_add) > 4)))
 number_of_stddevs = c(1,2,3,4)
 model_results = data.frame(number_of_stddevs, count_gt_stddev)
 colnames(model_results) = c("# of stddev", "Count of rows > stddev")
 knitr::kable(model_results)
 
 # cooks.distance tests (intersection of high-outlier, high-influence is 95%)
-# remove these data points from the dataset
-high_influence_rows = which(cooks.distance(ofit0) > 4/length(ofit0$residuals))
-intersection_of_high_inf_high_outlier = intersect(which(rstandard(ofit0) > 4), high_influence_rows)
-length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
+# outliers flagged for removal
+high_influence_rows = which(cooks.distance(outlier_fit_add) > 4 / length(outlier_fit_add$residuals))
+length(high_influence_rows)
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
+(pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] * 100)
+(pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] * 100)
 
 # analyze outlier rows to check for commonality
 outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
 outlier_df = truck_df[outlier_rows_to_remove,]
 ```
+
+- **`r count_gt_stddev[3]`** rows > 3 standard deviations from the mean
+- **`r count_gt_stddev[4]`** rows > 4 standard deviations from the mean
+
+A significant percentage (``r pct`%`) of observations with large-residuals also
+have high leverage and, therefore, have high influence. These observations are
+good candidates for exclusion from our dataset.
 
 ```{r Outlier Analysis pt. 2, echo=TRUE, results='hide'}
 par(mfrow=c(2,2))
@@ -466,34 +486,32 @@ hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
 hist(log(outlier_df$mileage), breaks=30,
      xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
 
-par(mfrow=c(1,1))
-
-# modest improvement in R^2 of 0.01 (or 1%)
-# RMSE decrease of approximately 100
-# fitted vs residuals plot
-ofit1 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
-           + I(mileage ^ 2) + maximum_seating + wheel_system + power_hp
-           + bed_length + frame_damaged + salvage,
-           data = truck_df[-outlier_rows_to_remove,])
-summary(ofit1)
-plot_fitted_resid(ofit1)
-
-# fit additional model with outliers removed and added state predictor
-ofit2 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
-           + I(mileage^2) + maximum_seating + wheel_system + power_hp
-           + bed_length + frame_damaged + salvage + state,
-           data = truck_df[-outlier_rows_to_remove,])
-summary(ofit2)
-plot_fitted_resid(ofit2)
-
-# compare removed outlier models
-anova(ofit1, ofit2)
+# # modest improvement in R^2 of 0.01 (or 1%)
+# # RMSE decrease of approximately 100
+# # fitted vs residuals plot
+# ofit1 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
+#            + I(mileage ^ 2) + maximum_seating + wheel_system + power_hp
+#            + bed_length + frame_damaged + salvage,
+#            data = truck_df[-outlier_rows_to_remove,])
+# summary(ofit1)
+# plot_fitted_resid(ofit1)
+# 
+# # fit additional model with outliers removed and added state predictor
+# ofit2 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
+#            + I(mileage^2) + maximum_seating + wheel_system + power_hp
+#            + bed_length + frame_damaged + salvage + state,
+#            data = truck_df[-outlier_rows_to_remove,])
+# summary(ofit2)
+# plot_fitted_resid(ofit2)
+# 
+# # compare removed outlier models
+# anova(ofit1, ofit2)
 ```
 
 We continue our exploration by refitting the "full" model with outliers removed
 based on their being influential (measured by `rstandard` and `cooks.distance`).
 Reviewing the affect of the outlier removal on the model's coefficients, helps us
-determine whether or not there is significant influence from these observations.
+confirm whether or not there is significant influence from these observations.
 
 <!-- ### iii. Refit Model with Outliers Removed -->
 ```{r Outlier Analysis pt. 3, results = 'hide'}
@@ -501,15 +519,21 @@ determine whether or not there is significant influence from these observations.
 # formula_str = update.formula(formula_str,  ~ . + log(mileage))
 
 # refitted full model with outliers removed
-full_no_outliers = lm(full_model_formula, data = truck_df[-outlier_rows_to_remove,])
-# summary(full_no_outliers)
-print_useful_summary_stats(full_no_outliers)
-plot_fitted_resid(full_no_outliers)
+no_outlier_fit_add = lm(no_char_additive_formula, data = truck_df[-outlier_rows_to_remove,])
+# summary(no_outlier_fit_add)
+print_useful_summary_stats(no_outlier_fit_add)
 
 # percentage change in model coefficients
-abs((coef(full_no_outliers) - coef(full_model))/coef(full_no_outliers)) * 100
+pct_chng_in_model_coeff = abs(
+  (coef(no_outlier_fit_add) - coef(outlier_fit_add))
+  / coef(no_outlier_fit_add)) * 100
+
+# check for coefficients with a > 10% change
+pct_chng_in_model_coeff[pct_chng_in_model_coeff > 10.0]
 
 # compare removed outlier models
+plot_fitted_resid(outlier_fit_add)
+plot_fitted_resid(no_outlier_fit_add)
 # anova(full_model, full_no_outliers)
 ```
 
@@ -519,9 +543,11 @@ a large percentage change (~3 - 9%) in some of the model's coefficients ($\beta$
 after refitting the "full" model.
 
 ```{r Outlier Analysis pt. 4, include=FALSE}
-free_memory(ofit1)
-free_memory(ofit2)
+# free_memory(ofit1)
+# free_memory(ofit2)
 # free_memory(fit2_additive_all)
+free_memory(no_outlier_fit_add)
+free_memory(outlier_fit_add)
 ```
 
 &nbsp;
@@ -535,6 +561,8 @@ exploration of the **Mid-Atlantic** (NY, PA, and NJ), but additional analysis
 can be found in the [Appendix](#appendix).
 
 ```{r Regional Model Analysis - Mid Atlantic, results = 'hide'}
+par(mfrow=c(1,1))
+
 # process dataset for mid atlantic region analysis
 cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
 car_data = truck_df[, cols_to_keep]
@@ -648,50 +676,50 @@ significant interaction terms in order to maintain the least number of variables
 
 ### iv. Significant Variable Transformations and Interactions
 ```{r Significant Variable Transformations and Interactions pt. 1, results = 'hide'}
-boxcox(improved_midat_model, plotit = TRUE)
+boxcox(improved_mid_atlantic_int_model, plotit = TRUE)
 
-improved_mid_atlantic_cox = lm(formula = (price ^ 0.26 - 1)/0.26 ~ back_legroom
-                         + bed_length + daysonmarket + franchise_dealer
-                         + fuel_tank_volume + fuel_type + height
-                         + highway_fuel_economy + horsepower + isCab + is_new
-                         + longitude + maximum_seating + mileage + seller_rating
-                         + wheel_system + wheelbase + width + year + torque_lb_ft
-                         + torque_rpm + state,
-                         data = mid_atlantic_data)
-summary(improved_mid_atlantic_cox)
-bptest(improved_mid_atlantic_cox)
-plot_fitted_resid(improved_mid_atlantic_cox)
-
-improved_mid_atlantic_log = lm(log(price) ~ engine_displacement + engine_cylinders
-             + highway_fuel_economy + horsepower + maximum_seating + mileage
-             + year + wheel_system + bed_length + franchise_dealer,
-             data = mid_atlantic_data)
-summary(improved_mid_atlantic_log)
-bptest(improved_mid_atlantic_log)
-plot_fitted_resid(improved_mid_atlantic_log)
-
-improved_mid_atlantic_log_reduced = lm(log(price) ~ engine_displacement + engine_cylinders
-                     + highway_fuel_economy + horsepower + maximum_seating
-                     + mileage + year + wheel_system + bed_length
-                     + franchise_dealer,
-                     data = mid_atlantic_data)
-summary(improved_mid_atlantic_log_reduced)
-bptest(improved_mid_atlantic_log_reduced)
-plot_fitted_resid(improved_mid_atlantic_log_reduced)
-
-improved_mid_atlantic_log_int = lm(log(price) ~ engine_displacement + engine_cylinders
-                     + highway_fuel_economy + horsepower + maximum_seating
-                     + mileage + year + wheel_system + bed_length
-                     + franchise_dealer + year:bed_length + year:mileage
-                     + maximum_seating:bed_length
-                     + engine_cylinders:highway_fuel_economy
-                     + engine_cylinders:horsepower
-                     + engine_displacement:engine_cylinders
-                     + engine_displacement:highway_fuel_economy,
-                     data = mid_atlantic_data)
-summary(improved_mid_atlantic_log_int)
-bptest(improved_mid_atlantic_log_int)
-plot_fitted_resid(improved_mid_atlantic_log_int)
+# improved_mid_atlantic_cox = lm(formula = (price ^ 0.26 - 1)/0.26 ~ back_legroom
+#                          + bed_length + daysonmarket + franchise_dealer
+#                          + fuel_tank_volume + fuel_type + height
+#                          + highway_fuel_economy + horsepower + isCab + is_new
+#                          + longitude + maximum_seating + mileage + seller_rating
+#                          + wheel_system + wheelbase + width + year + torque_lb_ft
+#                          + torque_rpm + state,
+#                          data = mid_atlantic_data)
+# summary(improved_mid_atlantic_cox)
+# bptest(improved_mid_atlantic_cox)
+# plot_fitted_resid(improved_mid_atlantic_cox)
+# 
+# improved_mid_atlantic_log = lm(log(price) ~ engine_displacement + engine_cylinders
+#              + highway_fuel_economy + horsepower + maximum_seating + mileage
+#              + year + wheel_system + bed_length + franchise_dealer,
+#              data = mid_atlantic_data)
+# summary(improved_mid_atlantic_log)
+# bptest(improved_mid_atlantic_log)
+# plot_fitted_resid(improved_mid_atlantic_log)
+# 
+# improved_mid_atlantic_log_reduced = lm(log(price) ~ engine_displacement + engine_cylinders
+#                      + highway_fuel_economy + horsepower + maximum_seating
+#                      + mileage + year + wheel_system + bed_length
+#                      + franchise_dealer,
+#                      data = mid_atlantic_data)
+# summary(improved_mid_atlantic_log_reduced)
+# bptest(improved_mid_atlantic_log_reduced)
+# plot_fitted_resid(improved_mid_atlantic_log_reduced)
+# 
+# improved_mid_atlantic_log_int = lm(log(price) ~ engine_displacement + engine_cylinders
+#                      + highway_fuel_economy + horsepower + maximum_seating
+#                      + mileage + year + wheel_system + bed_length
+#                      + franchise_dealer + year:bed_length + year:mileage
+#                      + maximum_seating:bed_length
+#                      + engine_cylinders:highway_fuel_economy
+#                      + engine_cylinders:horsepower
+#                      + engine_displacement:engine_cylinders
+#                      + engine_displacement:highway_fuel_economy,
+#                      data = mid_atlantic_data)
+# summary(improved_mid_atlantic_log_int)
+# bptest(improved_mid_atlantic_log_int)
+# plot_fitted_resid(improved_mid_atlantic_log_int)
 
 # fitted vs residuals and QQ plots for improved_mid_atlantic_int_model
 plot_fitted_resid(improved_mid_atlantic_int_model)
