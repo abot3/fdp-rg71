@@ -38,7 +38,7 @@ random_rows_from_df = function(df = data.frame(), pct = 0.10) {
   df[rowidx, ]
 }
 
-
+# Calculate and display useful model summary statistics
 print_useful_summary_stats = function(fit) {
   s = summary(fit)
   d = c(

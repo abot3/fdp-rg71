@@ -238,7 +238,7 @@ The prepared dataset is comprised of the following variables:
 
 In creating a linear regression model around these variables, we set out to (not only) identify the significant predictors of price for used pickup trucks, but to seek, and potentially offer, strategies for consumers to receive the best value for their money.
 
-Our target metrics for a successful model are set as follows:
+Our target metrics, used to define a successful model, are set as follows:
 
 - $RMSE$ <= 6000
 - $(p - 1)$ <= 35
