@@ -183,8 +183,23 @@ In creating a linear regression model around these variables, we aim to (not onl
 ```
 
 #### Naive Models
-```{r naive_hypothesis_model, echo=TRUE, results = 'hide'}
 
+At the start of our project before we began exploring the data or model fitting,
+we brainstormed as a group what predictors we expected to dbe siginificant
+predictors of price. Each group member came up with their expectations independently.
+We incorporated any predictor that at least 2 group members thought would be
+significant into what we call the base model. The base model represents our
+naive hypothesis of what a good model for car price is. This model will be a useful
+tool, against which we can evaluate better fitting models to determine their
+improvement over baseline intuition.
+
+##### Base Model
+```{r naive_hypothesis_model, echo=TRUE, results = 'hide'}
+base_model = lm(price ~ engine_displacement + engine_cylinders +
+                highway_fuel_economy + horsepower+ maximum_seating + transmission +
+                mileage + year + wheel_system + power_hp + bed_length + cabin +
+                  salvage + franchise_dealer, data = truck_df)
+print_useful_summary_stats(base_model)
 ```
 
 Before continuing with analysis of our data we fit a naive large additive model
@@ -197,6 +212,7 @@ Regardless this model will provide a baseline against which we can compare more
 optimized models. It can also be used for analyzing the impact of predictor/response
 transformations or used for outlier analysis.
 
+##### Mega Model
 ```{r mega_model, echo=TRUE}
 # Create a formual string for a simple additive model using all non-character columns
 mega_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
@@ -235,6 +251,9 @@ predictors, with a high R^2, low p-value and reasonable standard error. This
 simple fit allows us to generate residuals and use tools like rstandard and 
 Cook's Distance.
 
+
+##### Histograms
+
 ```{r histogram_analysis, echo=FALSE}
 par(mfrow=c(3,2))
 hist(truck_df$year, breaks=length(unique(truck_df$year)),
@@ -243,12 +262,14 @@ hist(as.integer(truck_df$state), breaks=length(unique(truck_df$state)),
      xlab="State", ylab = "Frequency", main = "Histogram of State")
 hist(truck_df$horsepower, breaks=30,
      xlab="Horsepower", ylab = "Frequency", main = "Histogram of Horsepower")
-hist(log(truck_df$mileage), breaks=30,
-     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+hist(log10(truck_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage)")
 hist(as.integer(truck_df$maximum_seating), breaks=30,
      xlab="Maximum Seating", ylab = "Frequency", main = "Histogram of Max seating")
 ```
 
+
+##### Pairs Plots
 
 ```{r colinearity_analysis, echo=FALSE}
 # TODO(aaronbotelho, li)
@@ -276,7 +297,7 @@ Notes from Pairs plot.
 
 - power_hp and torque_lb_ft are colinear
 - maximum_seating is strongly linear with price.
-- wheel system is also strongly linear 
+- wheel system is also somewhat linear with price.
 
 ```{r colinearity_analysis_3, echo=FALSE}
 pairs_columns2 = c("price", "latitude", "longitude")
@@ -298,6 +319,8 @@ pairs_columns2 = c("price", "region", "state")
 pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
 pairs(pairs_df, col = "darkorange")
 ```
+
+##### Variance Inflation Factor
 
 In addition to pairs plots we can use `variance inflation factor (VIF)` to determine
 which predictors are colinear with 1 or more other predictors. The VIF measures
@@ -325,11 +348,12 @@ be colinear with each other. Which are the most important predictors?
 owner_count (``r v["owner_count"]``) have very, very high VIFs. What are these
 colinear with?
 
-- Multiple `Regions` and `States` have a high VIF. Is this colinearity between
+- Multiple `regions` and `states` have a high VIF. Is this colinearity between
 regions and states? What happens if we remove one of the two predictors.
 
 ```{r colinearity_analysis_6, echo=TRUE, message=FALSE, warning=FALSE}
-mega_model_no_region_formula = update.formula(mega_model_formula, ~ . -region -latitude -longitude)
+mega_model_no_region_formula = update.formula(
+  mega_model_formula, ~ . -region -latitude -longitude)
 mm2 = lm(mega_model_no_region_formula, data = truck_df)
 #formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
 #formula_str = update.formula(formula_str,  ~ . + log(mileage))
@@ -359,6 +383,8 @@ region are somewhat colinear.
 ```{r colinearity_analysis_last, include=FALSE}
 free_memory(pairs_df)
 ```
+
+##### Outlier Removal
 
 Next we attempt to identify outliers, observations which do not fit the model well,
 and which may have significant impact on the coefficients of the model. Often
@@ -403,7 +429,7 @@ from the mean. These may affect the model if they have high leverage.
 # Do some Cook's distance tests. Large Cook's distance implies high influence
 high_influence_rows = which(cooks.distance(outlier_fit_add) > 4/length(outlier_fit_add$residuals))
 length(high_influence_rows)
-# The intersection of large-outlier, high-influence is 95%.
+# The intersection of the set of large-outlier, high-influnce is a high percentage.
 # Let's remove these from the dataset.
 intersection_of_high_inf_high_outlier = intersect(
   which(rstandard(outlier_fit_add) > 4), high_influence_rows)
@@ -419,10 +445,21 @@ candidates for exclusion.
 
 
 ```{r outlier_analysis_2, echo=TRUE, results='hide'}
-# Let's take a look at the outlier rows to see if there's any commonality.
+# Take a look at the outlier rows to see if there's any commonality in the 
+# data.
 outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
 outlier_df = truck_df[outlier_rows_to_remove, ]
+# So many Jeep Gladiators in outliers!
+nrow(outlier_df[outlier_df[,"model_name"] == c("gladiator", "Gladiator"), ]) /
+    nrow(outlier_df) * 100
+# So many F150s
+nrow(outlier_df[outlier_df[,"model_name"] == c("F-150", "F150"), ]) /
+    nrow(outlier_df) * 100
+# So many 4x4s
+nrow(outlier_df[outlier_df[,"wheel_system"] == c("4WD"), ]) /
+    nrow(outlier_df) * 100
 ```
+
 
 ```{r outlier_analysis_3, echo=FALSE}
 par(mfrow=c(2,2))
@@ -475,7 +512,7 @@ pct_chng_in_model_coeff[pct_chng_in_model_coeff > 10.0]
 ```
 Plot fitted vs residuals for a) all data, b) data with large outlier rows removed.
 
-```{r outlier_analysis_4.1, echo=FALSE}
+```{r outlier_analysis_5, echo=FALSE}
 plot_fitted_resid(outlier_fit_add)
 plot_fitted_resid(no_outlier_fit_add)
 ```
@@ -497,7 +534,7 @@ free_memory(outlier_fit_add)
 
 #### Model Exploration And Selection
 
-We stated from regional analysis, divided and conquered by everyone in the team. After model explorations(more details can be found in appendix), we found there are no differences that are as significant as we initially thought among regions, so we landed on a base model with common predictors that are significant among different regions. From the base model and mega model, we tried different model selection techniques to arrive on a reginal predition model. Here we will use Mid atlantic region(NY, PA, NJ) as an example for illustration purpose. 
+We stated from regional analysis, divided and conquered by everyone in the team. After model explorations(more details can be found in appendix), we found there are no differences that are as significant as we initially thought among regions, so we landed on a base model with common predictors that are significant among different regions. From the base model and mega model, we tried different model selection techniques to arrive on a regional prediction model. Here we will use Mid atlantic region(NY, PA, NJ) as an example for illustration purpose. 
 
 ```{r}
 # split train and test
