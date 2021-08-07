@@ -184,6 +184,8 @@ In creating a linear regression model around these variables, we aim to (not onl
 
 #### Naive Models
 
+##### Base Model
+
 At the start of our project before we began exploring the data or model fitting,
 we brainstormed as a group what predictors we expected to dbe siginificant
 predictors of price. Each group member came up with their expectations independently.
@@ -193,14 +195,15 @@ naive hypothesis of what a good model for car price is. This model will be a use
 tool, against which we can evaluate better fitting models to determine their
 improvement over baseline intuition.
 
-##### Base Model
-```{r naive_hypothesis_model, echo=TRUE, results = 'hide'}
+```{r naive_hypothesis_model, echo=TRUE}
 base_model = lm(price ~ engine_displacement + engine_cylinders +
                 highway_fuel_economy + horsepower+ maximum_seating + transmission +
                 mileage + year + wheel_system + power_hp + bed_length + cabin +
                   salvage + franchise_dealer, data = truck_df)
 print_useful_summary_stats(base_model)
 ```
+
+##### Mega Model
 
 Before continuing with analysis of our data we fit a naive large additive model
 using all numeric and factor predictors with no interactions. Since $R^2$
@@ -212,7 +215,6 @@ Regardless this model will provide a baseline against which we can compare more
 optimized models. It can also be used for analyzing the impact of predictor/response
 transformations or used for outlier analysis.
 
-##### Mega Model
 ```{r mega_model, echo=TRUE}
 # Create a formual string for a simple additive model using all non-character columns
 mega_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
@@ -409,7 +411,7 @@ First look at the standardized residuals. By dividing the residuals by the stand
 error the rstandard follows a normal distribution with mean 0 and stddev of 1.
 We can look at the number of observations with standardized redisuals 1,2,3,4
 standard deviations from the mean. The higher the deviation the worse the
-observation fits our model and may have high influence.
+observation fit our model and may have high influence.
 
 ```{r outlier_analysis_1.1, echo=TRUE}
 count_gt_stddev = c(length(which(rstandard(outlier_fit_add) > 1)),
@@ -432,9 +434,11 @@ length(high_influence_rows)
 # The intersection of the set of large-outlier, high-influnce is a high percentage.
 # Let's remove these from the dataset.
 intersection_of_high_inf_high_outlier = intersect(
-  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
+  which(rstandard(outlier_fit_add) > 3), high_influence_rows)
 pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] * 100
 pct
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
 pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] * 100
 pct
 ```
@@ -532,6 +536,11 @@ free_memory(no_outlier_fit_add)
 free_memory(outlier_fit_add)
 ```
 
+```{r tbd_remove_outliers_from_truck_df, include=FALSE}
+#truck_df = truck_df[-outlier_rows_to_remove, ]
+```
+
+
 #### Model Exploration And Selection
 
 We stated from regional analysis, divided and conquered by everyone in the team. After model explorations(more details can be found in appendix), we found there are no differences that are as significant as we initially thought among regions, so we landed on a base model with common predictors that are significant among different regions. From the base model and mega model, we tried different model selection techniques to arrive on a regional prediction model. Here we will use Mid atlantic region(NY, PA, NJ) as an example for illustration purpose. 
@@ -555,6 +564,7 @@ mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
 base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
 base_predictors_formula = formula(paste("price ~", paste("", base_predictors, sep = " ", collapse = " +")))
 mid_altantic_base_model = lm(base_predictors_formula, data = mid_altantic_data)
+base_predictors_formula
 print_useful_summary_stats(mid_altantic_base_model)
 ```
 
@@ -593,6 +603,7 @@ significant_inter_predictors = c("year:bed_length", "year:mileage", "maximum_sea
 improved_interactions_predictors = c(base_predictors, significant_inter_predictors)
 base_predictors_formula = formula(paste("price ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
 improved_mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+base_predictors_formula
 print_useful_summary_stats(improved_mid_altantic_inter_model)
 ```
 
