@@ -21,10 +21,13 @@ library(Metrics)
 library(tidyverse)
 library(stringr)
 library(dplyr)
+library(faraway)
+library(lmtest)
+library(MASS)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 ```
 
-###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
+###### Authors: Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
 ```{r import_cleaned_data, include = FALSE}
 set.seed(12345)
 # TODO(anyone) - How should we import the csv data without adding it to the git repo?
@@ -107,6 +110,18 @@ free_memory = function(obj = data.frame()) {
 random_rows_from_df = function(df = data.frame(), pct = 0.10) {
   rowidx = as.integer(runif(round(nrow(df) * 0.10), min = 0, max = nrow(df)))
   df[rowidx, ]
+}
+
+# Calculate and display useful model summary statistics
+print_useful_summary_stats = function(fit) {
+  s = summary(fit)
+  d = c(
+    resid_std_err = c(s$sigma),
+    r.squared = c(s$r.squared),
+    fstatistic = c(s$fstatistic[1]),
+    p.value = c(pf(s$fstatistic[1], df1=s$df[1] - 1, df2=s$df[2], lower.tail = FALSE))
+  )
+  d
 }
 
 truck_df = set_data_structure(truck_df)
@@ -247,36 +262,169 @@ Our target metrics, used to define a successful model, are set as follows:
 ---
 
 ## Methods
-```{r}
-# TODO
-### Basic analysis of variables (significant predictors, identifying collinearity, outliers, etc.).
-### Nothing is done with these variables, just yet, rather we are calling them out as they will likely be highlighted
-### later in the Methods section
+### i. Naive Model Analysis
 
-### There appears to be significance between certain predictors and the response. Therefore, explore main effects model.
-### This will be the introduction of our naive models and their associated measures (RMSE, R^2)
+##### Common Model Analysis (our hypothesis):
+We begin our analysis with an agreed upon "common" model, where we decide the
+model predictors to include based on our collective knowledge of the used car
+market. As consumers, we focus in on the attributes/variables that we consider
+most relevant and most important in determining the value of a vehicle on the
+market. This _naive_ model (our **hypothesis**) serves as our starting position
+for exploring model improvements through transformations, interactions, and the
+introduction of additional predictor variables.
 
-### Methods used to enhance/improve our model (stepwise model selection, interactions, transformations, etc.)
-
-# Correlation Analysis
-# Scatterplot Matrix
+```{r Naive Common Model (hypothesis), echo=TRUE, results = 'hide'}
+common_model = lm(price ~ engine_displacement + engine_cylinders
+                  + highway_fuel_economy + horsepower + maximum_seating
+                  + transmission + mileage + year + wheel_system + power_hp
+                  + bed_length + cabin + salvage + franchise_dealer + state,
+                  data = truck_df)
+print_useful_summary_stats(common_model)
 ```
 
-### i. Colinearity Analysis
-```{r Colinearity Analysis}
-# TODO(aaronbotelho, li)
+&nbsp;
+
+##### Full Model Analysis (fit all non-character predictors):
+Before continuing analysis, we fit an additional _naive_, "full" additive model,
+using all numeric and factor predictors without interactions. This approach
+improves both $R^2$ and $RMSE$ (when compared to our hypothesis model) due to
+the increase of predictors. And so, we conclude that the "full" additive model
+provides a better fit to the data. However, looking over the model predictors,
+we can see (and validate some of our initial assumptions) that a number of them
+have high levels of colinearity. In addition, considering the large number of
+predictors, we further conclude that this "full" model is relatively complex.
+
+Despite the colinear relationships with the added predictors, the "full" model
+still provides helpful insight and a foundation for which we can draw comparisons
+against future models. This _base_ model will be used in assessing the impact of
+predictor/response transformations and in our outlier analysis.
+
+```{r Naive Full Model Analysis, echo=TRUE, results = 'hide'}
+# create formula for a simple additive model using all non-character variables
+full_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+
+# fit full model
+full_model = lm(full_model_formula, data = truck_df)
+print_useful_summary_stats(full_model)
 ```
+
+&nbsp;
 
 ### ii. Outlier Analysis
-```{r Outlier Analysis}
-# create formula for simple additive model omitting all chr data types
+With our dataset cleaned and structured, we seek to better understand the
+distributions and correlations found across its variables. The following analysis
+uses histograms to visualize these variable distributions and help to identify
+the attributes we expect, or assume, will be significant in our final model.
+
+Applying the `pairs` function (generating a scatterplot matrix) and exploring
+covariance functions, we break down the relationships between predictors, as well
+as how they relate to the response. Identifying the linear relationships, which
+indicate colinearity, allows for a first round of model optimization/simplification
+by removing redundant (colinear) predictors. The scatterplot matrix further
+provides a high-level view of which predictors have a linear, quadratic, or
+logarithmic relationship with the response variable.
+
+After analyzing colinearity and variable distribution we focus in on the observations,
+themselves. The project's dataset was scraped from the [Cargurus](https://www.cargurus.com/) website
+with user-generated input and was not filtered or normalized. Upon further analysis,
+we discovered rows containing user errors, e.g - a price of \$10,000 entered as
+\$100,000, or a 4 cylinder vehicle mistakenly listed as 6 cylinders. Since we
+cannot manually search the data for these erroneous entries but can use outlier
+analysis and standardized residuals to draw reasonable assumptions, we can find
+and highlight rows that fall within many standard deviations from the population
+mean.
+
+A slight simplification to our _naive_ "full" additive model is used to perform
+our outlier analysis. This starting model uses all non-character predictors and
+has a high $R^2$ with a favorable $RMSE$. Here, we utilize the `rstandard` and
+`cooks.distance` functions to draw conclusions and drive future decisions for
+optimized model selection.
+
+```{r Histogram Plot Analysis, echo=FALSE}
+par(mfrow=c(3,2))
+hist(truck_df$year, breaks=length(unique(truck_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+hist(as.integer(truck_df$state), breaks=length(unique(truck_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State")
+hist(truck_df$horsepower, breaks=30,
+     xlab="Horsepower", ylab = "Frequency", main = "Histogram of Horsepower")
+hist(log(truck_df$mileage), breaks=30,
+     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+hist(as.integer(truck_df$maximum_seating), breaks=30,
+     xlab="Maximum Seating", ylab = "Frequency", main = "Histogram of Max seating")
+```
+
+&nbsp;
+
+```{r Colinearity Analysis pt. 1, echo=FALSE}
+# TODO(aaronbotelho, li)
+pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns]
+pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (1)")
+```
+
+From **Scatterplot Matrix (1)**:
+
+- `price` vs `mileage` appears as if it may benefit if modeled by `1/x`
+  - `log(x)` would also work, considering the orders of magnitude
+- `engine_cylinders` vs `engine_displacement` are clearly collinear
+  - Our model will include `engine_displacement` over `engine_cylinders`
+  - This decision is driven by our preference for a `num` variable over a `factor`
+- `year` is nearly perfectly linear and quadratic with our response, `price`
+- `daysonmarket` is, to our surprise, not useful and adds lots of noise
+
+&nbsp;
+
+```{r Colinearity Analysis pt. 2, echo=FALSE}
+pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (2)")
+```
+
+From **Scatterplot Matrix (2)**:
+
+- `power_hp` vs `torque_lb_ft` appear colinear
+- `maximum_seating` displays a strong linear relationship with `price`
+- `wheel_system` also shows a strong linear relationship with `price`
+
+&nbsp;
+
+```{r Colinearity Analysis pt. 3, echo=FALSE}
+pairs_columns3 = c("price", "latitude", "longitude")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (3)")
+```
+
+From **Scatterplot Matrix (3)**:
+
+- `latitude` and `longitude` have linear relationships to `price`
+  - This relationship appears to have no slope (horizontal)
+- The variance in `price` vs `latitude` OR `longitude` is constant
+- `latitude` and `longitude` do not appear to be useful predictors of the response
+- The plot of `latitude` vs `longitude` shows a map of the United States 
+
+```{r Colinearity Analysis pt. 4, echo=FALSE}
+# TODO(anyone) - vif analysis
+```
+
+```{r Colinearity Analysis pt. 5, include=FALSE}
+free_memory(pairs_df)
+```
+
+Next, we attempt to identify the outliers in our data (observations which do not
+fit the model well). In our analysis, we look at these observations to measure their
+respective leverages and influence on our model's predictors. We expect that these
+observations will have large residuals.
+
+```{r Outlier Analysis pt. 1, results = 'hide'}
+# create formula for simplified additive model omitting character data types
 columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
 no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
 hist(truck_df$year, breaks=length(unique(truck_df$year)))
 
 # rstandard 
 # cooks.distance
-# 2 Naive Models (mega model and “common” model) - Aaron or Anyone
+# 2 Naive Models ("full" model and “common” model) - Aaron or Anyone
 
 ofit0 = lm(no_char_additive_formula, data = truck_df)
 head(summary(ofit0)$coefficients, 10)
@@ -298,87 +446,134 @@ length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4]
 
 # analyze outlier rows to check for commonality
 outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
-outlier_df = truck_df[outlier_rows_to_remove, ]
-unique(truck_df[,"year"])
+outlier_df = truck_df[outlier_rows_to_remove,]
 ```
 
-### iii. Refit Model with Outliers Removed
-```{r Refit Model with Outliers Removed}
-# analyze outlier rows to check for commonality
-outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
-outlier_df = truck_df[outlier_rows_to_remove, ]
+```{r Outlier Analysis pt. 2, echo=TRUE, results='hide'}
+par(mfrow=c(2,2))
+
+hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State")
+hist(log(outlier_df$mileage), breaks=30,
+     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+
+par(mfrow=c(1,1))
 
 # modest improvement in R^2 of 0.01 (or 1%)
-# SE decrease of approximately 100
-
+# RMSE decrease of approximately 100
 # fitted vs residuals plot
-ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
-   maximum_seating + wheel_system + power_hp + bed_length +
-  frame_damaged + salvage,
-   data = truck_df[-outlier_rows_to_remove, ])
+ofit1 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
+           + I(mileage ^ 2) + maximum_seating + wheel_system + power_hp
+           + bed_length + frame_damaged + salvage,
+           data = truck_df[-outlier_rows_to_remove,])
 summary(ofit1)
 plot_fitted_resid(ofit1)
+
+# fit additional model with outliers removed and added state predictor
+ofit2 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
+           + I(mileage^2) + maximum_seating + wheel_system + power_hp
+           + bed_length + frame_damaged + salvage + state,
+           data = truck_df[-outlier_rows_to_remove,])
+summary(ofit2)
+plot_fitted_resid(ofit2)
+
+# compare removed outlier models
+anova(ofit1, ofit2)
 ```
 
-```{r}
-rm(ofit1)
-gc()
+We continue our exploration by refitting the "full" model with outliers removed
+based on their being influential (measured by `rstandard` and `cooks.distance`).
+Reviewing the affect of the outlier removal on the model's coefficients, helps us
+determine whether or not there is significant influence from these observations.
+
+<!-- ### iii. Refit Model with Outliers Removed -->
+```{r Outlier Analysis pt. 3, results = 'hide'}
+# formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+# formula_str = update.formula(formula_str,  ~ . + log(mileage))
+
+# refitted full model with outliers removed
+full_no_outliers = lm(full_model_formula, data = truck_df[-outlier_rows_to_remove,])
+# summary(full_no_outliers)
+print_useful_summary_stats(full_no_outliers)
+plot_fitted_resid(full_no_outliers)
+
+# percentage change in model coefficients
+abs((coef(full_no_outliers) - coef(full_model))/coef(full_no_outliers)) * 100
+
+# compare removed outlier models
+# anova(full_model, full_no_outliers)
 ```
 
-### iv. Model Analysis for Mid Atlantic Region
-```{r}
-# modeling for mid atlantic
+From the above code chunk, we find that the $RMSE$ and $R^2$ values of the model
+are, mostly, unaffected by the removal of outlier observations. There is, however,
+a large percentage change (~3 - 9%) in some of the model's coefficients ($\beta$)
+after refitting the "full" model.
+
+```{r Outlier Analysis pt. 4, include=FALSE}
+free_memory(ofit1)
+free_memory(ofit2)
+# free_memory(fit2_additive_all)
+```
+
+&nbsp;
+
+### iii. Regional Model Analysis - Mid Atlantic
+```{r Regional Model Analysis - Mid Atlantic, results = 'hide'}
+# fit model for mid atlantic region analysis
 cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
 car_data = truck_df[, cols_to_keep]
 mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
 drops = c("region")
 mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
 
-# base model
-base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
-                           + salvage + franchise_dealer, data = mid_altantic_data)
+# fit base model
+base_altantic_model = lm(price ~ engine_displacement
+                         + engine_cylinders + highway_fuel_economy + horsepower
+                         + maximum_seating + transmission + mileage + year
+                         + wheel_system + power_hp + bed_length + # cabin
+                         + salvage + franchise_dealer, data = mid_altantic_data)
 head(summary(base_altantic_model)$coefficients, 10)
 length(coef(base_altantic_model))
 calc_loocv_rmse(base_altantic_model)
 cal_rmse(base_altantic_model)
-```
 
-```{r}
-# base model + state (state is significant)
-base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
-                                 + salvage + franchise_dealer + state, data = mid_altantic_data)
+# fit base model + state (state is significant)
+base_altantic_model_state = lm(price ~ engine_displacement
+                               + engine_cylinders + highway_fuel_economy + horsepower
+                               + maximum_seating + transmission + mileage + year
+                               + wheel_system + power_hp + bed_length + #cabin
+                               + salvage + franchise_dealer + state,
+                               data = mid_altantic_data)
 head(summary(base_altantic_model_state)$coefficients, 10)
 length(coef(base_altantic_model_state))
 calc_loocv_rmse(base_altantic_model_state)
 cal_rmse(base_altantic_model_state)
 anova(base_altantic_model, base_altantic_model_state)
-```
 
-```{r}
-# mega model
-mega_midat_model = lm(price~., data =mid_altantic_data)
-calc_loocv_rmse(mega_midat_model)
-cal_rmse(mega_midat_model)
-```
+# fit full mid atlantic model
+full_midat_model = lm(price ~ ., data = mid_altantic_data)
+calc_loocv_rmse(full_midat_model)
+cal_rmse(full_midat_model)
 
-```{r}
-# bic_model 
-n = length(resid(mega_midat_model))
-model_bic_midat = step(mega_midat_model, direction = "backward", k = log(n), trace = 0)
+# fit optimized model via backward BIC search 
+n = length(resid(full_midat_model))
+model_bic_midat = step(full_midat_model, direction = "backward", k = log(n), trace = 0)
 head(summary(model_bic_midat)$coefficients, 10)
 length(coef(model_bic_midat))
 calc_loocv_rmse(model_bic_midat)
 cal_rmse(model_bic_midat)
-```
 
-```{r}
-improved_midat_model= lm(formula = price ~ back_legroom + bed_length  + 
-    daysonmarket + franchise_dealer + fuel_tank_volume + 
-    fuel_type + height + highway_fuel_economy + 
-    horsepower + isCab + is_new + longitude + 
-    maximum_seating + mileage + seller_rating + 
-    wheel_system + wheelbase + width + 
-    year  + torque_lb_ft + torque_rpm + state, data = mid_altantic_data)
+# fit improved model based on selection model's predictor significance
+improved_midat_model= lm(formula = price ~ back_legroom
+                         + bed_length + daysonmarket + franchise_dealer
+                         + fuel_tank_volume + fuel_type + height
+                         + highway_fuel_economy + horsepower + isCab + is_new
+                         + longitude + maximum_seating + mileage + seller_rating
+                         + wheel_system + wheelbase + width + year + torque_lb_ft
+                         + torque_rpm + state,
+                         data = mid_altantic_data)
 head(summary(improved_midat_model)$coefficients, 10)
 length(coef(improved_midat_model))
 calc_loocv_rmse(improved_midat_model)
@@ -390,9 +585,52 @@ cal_rmse(improved_midat_model)
 # ANOVA analysis to reduce predictors (global) - Sherry 
 ```
 
-### vi. Variable Transformations
-```{r Variable Transformations}
-# Li wizardry with the log(price) transformation - Li 
+### vi. Significant Variable Transformations and Interactions
+```{r Significant Variable Transformations and Interactions, results = 'hide'}
+boxcox(improved_midat_model, plotit = TRUE)
+
+improved_midat_cox = lm(formula = (price ^ 0.26 - 1)/0.26 ~ back_legroom
+                         + bed_length + daysonmarket + franchise_dealer
+                         + fuel_tank_volume + fuel_type + height
+                         + highway_fuel_economy + horsepower + isCab + is_new
+                         + longitude + maximum_seating + mileage + seller_rating
+                         + wheel_system + wheelbase + width + year + torque_lb_ft
+                         + torque_rpm + state,
+                         data = mid_altantic_data)
+summary(improved_midat_cox)
+bptest(improved_midat_cox)
+plot_fitted_resid(improved_midat_cox)
+
+improved_midat_log = lm(log(price) ~ engine_displacement + engine_cylinders
+             + highway_fuel_economy + horsepower + maximum_seating + mileage
+             + year + wheel_system + bed_length + franchise_dealer,
+             data = mid_altantic_data)
+summary(improved_midat_log)
+bptest(improved_midat_log)
+plot_fitted_resid(improved_midat_log)
+
+improved_midat_log_reduced = lm(log(price) ~ engine_displacement + engine_cylinders
+                     + highway_fuel_economy + horsepower + maximum_seating
+                     + mileage + year + wheel_system + bed_length
+                     + franchise_dealer,
+                     data = mid_altantic_data)
+summary(improved_midat_log_reduced)
+bptest(improved_midat_log_reduced)
+plot_fitted_resid(improved_midat_log_reduced)
+
+improved_midat_log_int = lm(log(price) ~ engine_displacement + engine_cylinders
+                     + highway_fuel_economy + horsepower + maximum_seating
+                     + mileage + year + wheel_system + bed_length
+                     + franchise_dealer + year:bed_length + year:mileage
+                     + maximum_seating:bed_length
+                     + engine_cylinders:highway_fuel_economy
+                     + engine_cylinders:horsepower
+                     + engine_displacement:engine_cylinders
+                     + engine_displacement:highway_fuel_economy,
+                     data = mid_altantic_data)
+summary(improved_midat_log_int)
+bptest(improved_midat_log_int)
+plot_fitted_resid(improved_midat_log_int)
 ```
 
 ---
@@ -582,6 +820,8 @@ set_data_structure = function(dataset) {
 used_truck_data = clean_dataset(read_csv({{ CSV_FILE_PATH }}))
 ```
 
+&nbsp;
+
 ### ii. Utility Functions
 ```{r Utility Functions, eval=FALSE}
 # plot fitted vs residuals
@@ -622,6 +862,8 @@ random_rows_from_df = function(df = data.frame(), pct = 0.10) {
   df[rowidx, ]
 }
 ```
+
+&nbsp;
 
 ### iii. Identify Regions by Latitude/Longitude
 ```{r Identify Regions by Latitude/Longitude, eval=FALSE}
@@ -668,6 +910,8 @@ used_truck_data$region[used_truck_data$latitude < 43.30313864345386 & used_truck
 used_truck_data$region = as.factor(used_truck_data$region)
 ```
 
+&nbsp;
+
 ### iv. Add State & Region Data via `usa` Package
 ```{r Add State & Region Data via usa Package, eval=FALSE}
 # extract US data from 'usa' library and merge with used truck dataset
@@ -711,6 +955,8 @@ used_truck_data$torque_rpm = as.numeric(gsub(",","",used_truck_data$torque_rpm))
 used_truck_data = used_truck_data %>% mutate_if(is.character,as.factor)
 str(used_truck_data)
 ```
+
+&nbsp;
 
 ### v. Region Analysis Workflow
 ```{r Region Analysis Workflow, eval=FALSE}
@@ -772,8 +1018,137 @@ calc_loocv_rmse(improved_region_model) # calculate leave one out cross validatio
 cal_rmse(improved_region_model) # calculate RMSE
 ```
 
-### vi. Initial Model Exploration of East South Central Region
-```{r Initial Model Exploration of East South Central Region, eval=FALSE}
+&nbsp;
+
+### vi. Model Analysis for Pacific Region
+```{r Model Analysis for Pacific Region, eval=FALSE}
+size_num = 5000
+
+cars_pacific = subset(used_truck_data, region == 'Pacific')
+cars_idx = sample(nrow(cars_pacific), size_num)
+cars_trn = cars_pacific[cars_idx, ]
+cars_tst = cars_pacific[-cars_idx, ]
+
+# fit naive base model
+fit_common = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy
+                  + horsepower + maximum_seating + transmission + mileage
+                  + year + wheel_system + power_hp + bed_length + cabin
+                  + salvage + franchise_dealer + state, data = cars_trn)
+summary(fit_common)
+
+# number of observations
+n = length(resid(fit_common))
+
+# fit reduced model using backward BIC search
+fit_reduced = step(fit_common, direction = "backward", trace = 0, k = log(n))
+summary(fit_reduced)
+
+# calculate RMSE for train / test data
+cal_rmse(cars_trn)
+cal_rmse(cars_tst)
+
+# compare LOOCV RMSE between common and reduced models
+calc_loocv_rmse(fit_common)
+calc_loocv_rmse(fit_reduced)
+
+# plot fitted vs residuals
+plot(fitted(fit_reduced), resid(fit_reduced), col = "dodgerblue",
+     pch = 20, cex = 1.5, xlab = "Fitted", ylab = "Residuals")
+abline(h = 0, lty = 2, col = "darkorange", lwd = 2)
+
+# BP test for equal variance
+bptest(fit_reduced)
+
+# Shapiro Wilk test for error normality
+shapiro.test(resid(fit_reduced))
+
+# plot Box-Cox
+boxcox(fit_reduced, plotit = TRUE)
+
+# fit transformed model based on Box-Cox analysis
+fit_cox = lm((price ^ 0.26 - 1) / 0.26 ~ engine_displacement + engine_cylinders + 
+    highway_fuel_economy + horsepower + maximum_seating + mileage + 
+    year + wheel_system + bed_length + franchise_dealer, data = cars_trn)
+summary(fit_cox)
+
+# BP test for equal variance
+bptest(fit_cox)
+
+# plot fitted vs residuals
+plot(fitted(fit_cox), resid(fit_cox), col = "dodgerblue",
+     pch = 20, cex = 1.5, xlab = "Fitted", ylab = "Residuals")
+abline(h = 0, lty = 2, col = "darkorange", lwd = 2)
+```
+
+Simplified Model after Box-Cox Analysis:
+```{r Simplified Model after Box-Cox Analysis, eval=FALSE}
+price ~ engine_displacement
+        + engine_cylinders
+        + highway_fuel_economy
+        + horsepower
+        + maximum_seating
+        + mileage
+        + year
+        + wheel_system
+        + bed_length
+        + franchise_dealer
+```
+
+- `10` predictors
+- $R^2$ = `0.71`
+
+After analyzing Box-Cox, we consider a response transformation of up to a power of 0.3.
+This analysis corroborated our decision to apply the log transformation to the response of our selected prediction model.
+
+```{r Additional Model Analysis for Pacific Region, eval=FALSE}
+fit_reduced2 = lm(log(price) ~ engine_displacement + engine_cylinders
+                  + highway_fuel_economy + horsepower + maximum_seating
+                  + mileage + year + wheel_system + bed_length
+                  + franchise_dealer,
+                  data = cars_trn)
+summary(fit_reduced2)
+rmse(log(cars_trn$price), predict(fit_reduced2, cars_trn))
+rmse(log(cars_tst$price), predict(fit_reduced2, cars_tst))
+calc_loocv_rmse(fit_reduced2)
+```
+
+- `10` predictors
+- $R^2$ = `0.82`
+- $RMSE$ = 0.17
+
+```{r Pacific Region Q-Q Plots for Error Normality, eval=FALSE}
+qqnorm(resid(fit_reduced2), col = "darkgrey")
+qqline(resid(fit_reduced2), col = "dodgerblue", lwd = 2)
+```
+
+```{r Additional Model Analysis for Pacific Region (cont.), eval=FALSE}
+pairs(log(price) ~ engine_displacement + engine_cylinders + fuel_tank_volume
+      + highway_fuel_economy + horsepower + maximum_seating + mileage + year
+      + bed_length,
+      data = cars_trn)
+
+fit_col = lm(log(price) ~ engine_displacement + engine_cylinders
+             + highway_fuel_economy + horsepower + maximum_seating + mileage
+             + year + wheel_system + bed_length + franchise_dealer
+             + year:bed_length + year:mileage + maximum_seating:bed_length
+             + engine_cylinders:highway_fuel_economy + engine_cylinders:horsepower
+             + engine_displacement:engine_cylinders
+             + engine_displacement:highway_fuel_economy,
+             data = cars_trn)
+summary(fit_col)
+anova(fit_reduced2, fit_col)
+rmse(log(cars_trn$price), predict(fit_col, cars_trn))
+rmse(log(cars_tst$price), predict(fit_col, cars_tst))
+calc_loocv_rmse(fit_col)
+```
+
+- $R^2$ = 0.84
+- $RMSE$ = 0.16
+
+&nbsp;
+
+### vii. Model Analysis for East South Central Region
+```{r Model Analysis for East South Central Region, eval=FALSE}
 # load and clean dataset
 used_truck_data_clean = read_csv('../Dataset/used_truck_data_with_region.csv')
 View(used_truck_data_clean)
@@ -1057,10 +1432,7 @@ plot(fitted(fit_esc_11), resid(fit_esc_11), col = "grey", pch = 20,
      xlab = "Fitted", ylab = "Residuals", main = "Data from Model 11")
 abline(h = 0, col = "darkorange", lwd = 2)
 
-```
-
-### vii. Refined Model Selection Workflow for East North & South Central Regions
-```{r Refined Model Selection Workflow for East South Central Region, eval=FALSE}
+# Refined Model Selection for East North & South Central Regions
 #-- ENC --#
 # fit naive base model (using predetermined predictors)
 base_region_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + cabin + salvage + franchise_dealer, data = used_enc)
