@@ -52,6 +52,7 @@ print_useful_summary_stats = function(fit) {
   d
 }
 
+# Display model statistics and diagnostic information
 comparison_stats = function(fit) {
   s = summary(fit)
   d = c(
