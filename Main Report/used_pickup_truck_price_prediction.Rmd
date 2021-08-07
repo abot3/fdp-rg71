@@ -20,6 +20,7 @@ library(readr)
 library(broom)
 library(Metrics)
 library(faraway)
+library(lmtest)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 source("Appendix/utility_functions.R")
 source("Appendix/data_cleanup.R")
@@ -181,7 +182,6 @@ In creating a linear regression model around these variables, we aim to (not onl
 ```
 
 #### Naive Models
-
 ```{r naive_hypothesis_model, echo=TRUE, results = 'hide'}
 
 ```
@@ -494,119 +494,144 @@ free_memory(no_outlier_fit_add)
 free_memory(outlier_fit_add)
 ```
 
-#### Discussion of Per - Region Models
+#### Model Exploration And Selection
+
+We stated from regional analysis, divided and conquered by everyone in the team. After model explorations(more details can be found in appendix), we found there are no differences that are as significant as we initially thought among regions, so we landed on a base model with common predictors that are significant among different regions. From the base model and mega model, we tried different model selection techniques to arrive on a reginal predition model. Here we will use Mid atlantic region(NY, PA, NJ) as an example for illustration purpose. 
+
 ```{r}
-# Helper functions
-#plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
-#  plot(fitted(model), resid(model), 
-#       col = pointcol, pch = 20, cex = 1.5,
-#       xlab = "Fitted", ylab = "Residuals")
-#  abline(h = 0, col = linecol, lwd = 2)
-#}
-#
-#plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
-#  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
-#  qqline(resid(model), col = linecol, lwd = 2)
-#}
-#
-#cal_rmse = function(model){
-#  sqrt(mean(resid(model) ^ 2))
-#}
-#calc_loocv_rmse = function(model) { 
-#   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
-#}
+# split train and test
+trn_idx = sample(nrow(truck_df), nrow(truck_df)*0.8)
+truck_df_trn = truck_df[trn_idx, ]
+truck_df_tst = truck_df[-trn_idx, ]
 ```
 
-```{r}
-# Sherry’s Analysis + Discussion (including model per region, as it’s significant
-# – but creates add’l work -- include sample of regions) - Sherry 
-# Plots: F v R, QQ, normality hist (?) 
-# Target metrics 
-# bp & shapiro (improvement?) 
 
-# Modeling for mid atlantic
-cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
-car_data = truck_df[, cols_to_keep]
-mid_altantic_data = car_data[car_data$region == "Mid Atlantic",]
+```{r}
+mid_altantic_data = truck_df_trn[truck_df_trn$region == "Mid Atlantic",]
 drops = c("region")
 mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
-# base model
-base_altantic_model = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
-                           + salvage + franchise_dealer, data = mid_altantic_data)
-summary(base_altantic_model)
-calc_loocv_rmse(base_altantic_model)
-cal_rmse(base_altantic_model)
 ```
 
 ```{r}
-# base model + state, state is significant
-base_altantic_model_state = lm(price ~ engine_displacement + engine_cylinders + highway_fuel_economy + horsepower+ maximum_seating + transmission + mileage + year + wheel_system + power_hp + bed_length + #cabin
-                                 + salvage + franchise_dealer + state, data = mid_altantic_data)
-summary(base_altantic_model_state)
-calc_loocv_rmse(base_altantic_model_state)
-cal_rmse(base_altantic_model_state)
-anova(base_altantic_model, base_altantic_model_state)
+# base model 
+base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
+base_predictors_formula = formula(paste("price ~", paste("", base_predictors, sep = " ", collapse = " +")))
+mid_altantic_base_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(mid_altantic_base_model)
 ```
 
 ```{r}
-# mega model
-mega_midat_model = lm(price~., data =mid_altantic_data)
-calc_loocv_rmse(mega_midat_model)
-cal_rmse(mega_midat_model)
+# mega model 
+mid_altantic_mega_model = lm(price~., data = mid_altantic_data)
+print_useful_summary_stats(mid_altantic_mega_model)
 ```
+
 
 ```{r}
-# bic_model 
-n = length(resid(mega_midat_model))
-model_bic_midat = step(mega_midat_model, direction = "backward", k = log(n), trace = 0)
-summary(model_bic_midat)
-calc_loocv_rmse(model_bic_midat)
-cal_rmse(model_bic_midat)
+# Apply BIC on base model
+# choose BIC over AIC because we want to have less predictors in our model
+nb = length(resid(mid_altantic_base_model))
+base_model_bic = step(mid_altantic_base_model, direction = "backward", k = log(nb), trace = 0)
+summary(base_model_bic)
+print_useful_summary_stats(base_model_bic)
 ```
+
 
 ```{r}
-improved_midat_model= lm(formula = price ~ back_legroom + bed_length  + 
-    daysonmarket + franchise_dealer + fuel_tank_volume + 
-    fuel_type + height + highway_fuel_economy + 
-    horsepower + isCab + is_new + longitude + 
-    maximum_seating + mileage + seller_rating + 
-    wheel_system + wheelbase + width + 
-    year  + torque_lb_ft + torque_rpm + state, data = mid_altantic_data)
-summary(improved_midat_model)
-calc_loocv_rmse(improved_midat_model)
-cal_rmse(improved_midat_model)
+# Added interaction on base model to find important interaction terms 
+
+base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
+base_interactions = combn(base_predictors, 2, FUN = paste, collapse = ":")
+base_interactions_predictors = c(base_predictors, base_interactions)
+base_predictors_formula = formula(paste("price ~", paste("", base_interactions_predictors, sep = " ", collapse = " +")))
+mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(mid_altantic_inter_model)
 ```
 
-
-#### ANOVA Analysis of Global Model
+Here we found adding two-way interaction terms are really significant for model improvements, based on p-values, we added most significant interaction terms to the base model in order to reduce the total number of predictors.
 ```{r}
-#ANOVA analysis to reduce predictors (global) - Sherry 
-
+significant_inter_predictors = c("year:bed_length", "year:mileage", "maximum_seating:bed_length", 
+      "engine_cylinders:highway_fuel_economy", "engine_cylinders:horsepower", "engine_displacement:engine_cylinders",       "engine_displacement:highway_fuel_economy")
+improved_interactions_predictors = c(base_predictors, significant_inter_predictors)
+base_predictors_formula = formula(paste("price ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+improved_mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(improved_mid_altantic_inter_model)
 ```
+
 
 #### Variable Transformations
 ```{r}
-#Li wizardry with the log(price) transformation - Li 
-
+# TODO: Li's boxcox
 ```
 
+```{r}
+# Residual vs fitted plot for improved_mid_altantic_inter_model
+plot_fitted_resid(improved_mid_altantic_inter_model)
+# qq plot for improved_mid_altantic_inter_model
+plot_qq(improved_mid_altantic_inter_model)
+```
+
+```{r}
+# response log-transformed model
+base_predictors_formula = formula(paste("log(price) ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+log_mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(log_mid_altantic_inter_model)
+```
+```{r}
+plot_fitted_resid(log_mid_altantic_inter_model)
+```
+
+Comparing the fitted vs residual plot before and after the response log-transformation as well as the results from the log model, we can see response log-transformation is really significant on model improvements.
+
+
+#### Further Anova Analysis 
+
+At this point, we are pretty confident that we have landed on a good regional used pickup truck price predition model. In order to arrive a good global model across US, we need to do further anova tests to determine the significance of regions.
+```{r}
+# Apply best regional model  to all us data
+base_predictors_formula = formula(paste("log(price) ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+regional_model = lm(base_predictors_formula, data = truck_df_trn)
+print_useful_summary_stats(regional_model)
+```
+
+```{r}
+# Anova test on region
+add_region = c(improved_interactions_predictors, "region")
+formula = formula(paste("log(price) ~", paste("", add_region, sep = " ", collapse = " +")))
+global_model_add_region = lm(formula, data = truck_df_trn)
+print_useful_summary_stats(global_model_add_region)
+anova(regional_model, global_model_add_region)["Pr(>F)"]
+```
+
+As we can see from the anova test, region is a significant predictor, so we would like to keep it as an additional predictor in our model. With that, we are confident that we have arrived on a good global model. 
 
 ---
 
 ### Results
-```{r}
-# Run prediction on Test data and present result analysis 
 
+#### Model comparison table
+```{r, echo = FALSE}
+base_model = comparison_stats(mid_altantic_base_model)
+mega_modle = comparison_stats(mid_altantic_mega_model)
+base_bic_model = comparison_stats(base_model_bic)
+base_interaction_model = comparison_stats(mid_altantic_inter_model)
+improved_interaction_model= comparison_stats(improved_mid_altantic_inter_model)
+log_model = comparison_stats(log_mid_altantic_inter_model)
+stats = rbind(base_model, mega_modle, base_bic_model, base_interaction_model, improved_interaction_model, log_model)
+knitr::kable(stats)
 ```
 
-#### Significant Plots & Things
+#### Model Analysis
 ```{r}
-# TODO
+# lm assumption test
+plot_fitted_resid(global_model_add_region)
+plot_qq(global_model_add_region)
 ```
 
-#### Non-Significant Plots & Things
-```{r}
-# TODO
+```{r, warning=FALSE}
+# test-rmse
+rmse_trn = sqrt(mean((truck_df_trn$price - predict(global_model_add_region, truck_df_trn)) ^ 2))
+rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model_add_region, truck_df_tst)) ^ 2))
 ```
 
 ---

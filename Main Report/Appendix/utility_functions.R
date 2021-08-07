@@ -44,8 +44,21 @@ print_useful_summary_stats = function(fit) {
   d = c(
     resid_std_err = c(s$sigma),
     r.squared = c(s$r.squared),
+    loocv_rmse = calc_loocv_rmse(fit),
+    rmse = cal_rmse(fit),
     fstatistic = c(s$fstatistic[1]),
     p.value = c(pf(s$fstatistic[1], df1=s$df[1] - 1, df2=s$df[2], lower.tail = FALSE))
+  )
+  d
+}
+
+comparison_stats = function(fit) {
+  s = summary(fit)
+  d = c(
+    predictor_numbers = length(fit$coefficients),
+    r.squared = c(s$r.squared),
+    loocv_rmse = calc_loocv_rmse(fit),
+    rmse = cal_rmse(fit)
   )
   d
 }
