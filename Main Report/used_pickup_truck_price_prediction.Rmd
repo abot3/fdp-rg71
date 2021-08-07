@@ -19,6 +19,7 @@ library(knitr)
 library(readr)
 library(broom)
 library(Metrics)
+library(faraway)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 source("Appendix/utility_functions.R")
 source("Appendix/data_cleanup.R")
@@ -208,7 +209,7 @@ print_useful_summary_stats(mega_model)
 #### Outlier Analysis
 
 After cleaning the trucks dataframe our next step in building the pricing model
-is to understand the distribution and correlations in out dataset. Histograms
+is to understand the distribution of, and correlations in, our dataset. Histograms
 are used to determine the distribution of a few columns we expect will be key to
 the final model.
 
@@ -262,7 +263,7 @@ Notes from Pairs plot.
 - engine_cylinders and engine_displacement are collinear. Let's use
 engine_displacement since it's an integer not a factor.
 - year is almost perfectly linear + quadratic with price.
-- daysonmarket is nor very useful lots of noise
+- daysonmarket is not very useful lots of noise
 
 ```{r colinearity_analysis_2, echo=FALSE}
 pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
@@ -288,14 +289,71 @@ Notes from pairs plot:
 horizontal line.
 - The variance in price vs. latitude or longitude is constant.
 - Latitude and longitude should not be useful predictors of price.
-- The scatter plot of latitude vs. longitude forms a map of the United States. 
+- The scatter plot of latitude vs. longitude forms a map of the United States!
 
 
-```{r colinearity_analysis_4}
-#TODO(anyone) - vif analysis
+```{r colinearity_analysis_4, echo=FALSE}
+pairs_columns2 = c("price", "region", "state")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
 ```
 
+In addition to pairs plots we can use `variance inflation factor (VIF)` to determine
+which predictors are colinear with 1 or more other predictors. The VIF measures
+the what proportion of the variance of a single predictor can be explained by
+a linear combination of the other predictors. A high VIF (>5) implies
+colinearity, i.e. a high percentage of the variation is explained by other
+predictors.
 
+```{r colinearity_analysis_5, echo=TRUE, message=FALSE, warning=FALSE}
+#TODO(anyone) - vif analysis
+v = vif(mega_model)
+v[v > 5]
+```
+
+Key Observations
+
+- `exterior_color` & `interior_color` look to be poor predictors, multiple exterior
+colors have a high VIF.
+
+- `Cylinders`, `engine_type`, `engine_displacement`, `*_fuel_economy`, `horsepower`,
+`power_rpm` and `torque_lb_ft` have a high VIF. It makes some sense that these could
+be colinear with each other. Which are the most important predictors?
+
+- height (``r v["height"]``), length (``r v["length"]``),
+owner_count (``r v["owner_count"]``) have very, very high VIFs. What are these
+colinear with?
+
+- Multiple `Regions` and `States` have a high VIF. Is this colinearity between
+regions and states? What happens if we remove one of the two predictors.
+
+```{r colinearity_analysis_6, echo=TRUE, message=FALSE, warning=FALSE}
+mega_model_no_region_formula = update.formula(mega_model_formula, ~ . -region -latitude -longitude)
+mm2 = lm(mega_model_no_region_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(mm2)
+v[v > 5]
+```
+
+The state predictor still has a high VIF even without region in the model. The list
+of states with high VIFs changed though. TX, NY now have a high VIF. AR, CO, NE,
+NH no longer have a high VIF.
+
+It's safe to say state is colinear with region, and individual states within the
+state factor are colinear with each other.
+
+```{r colinearity_analysis_7, echo=TRUE, message=FALSE, warning=FALSE}
+mega_model_no_state_formula = update.formula(mega_model_formula, ~ . -state -latitude -longitude)
+mm3 = lm(mega_model_no_state_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(mm3)
+v[v > 5]
+```
+
+Removing the state predictor results in region having low VIF. Thus state and
+region are somewhat colinear.
 
 ```{r colinearity_analysis_last, include=FALSE}
 free_memory(pairs_df)
@@ -303,37 +361,60 @@ free_memory(pairs_df)
 
 Next we attempt to identify outliers, observations which do not fit the model well,
 and which may have significant impact on the coefficients of the model. Often
-these observations will often have large residuals.
+these observations will have large residuals.
 
-```{r outlier_analysis_1, results = 'hide'}
-# Create a formula tring for a simple additive model using all non-character columns
-columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
-no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
+```{r outlier_analysis_1, echo=TRUE}
 #rstandard 
 #cooks.distance 
 #2 Naive Models (mega model and “common” model) - Aaron or Anyone 
-ofit0 = lm(no_char_additive_formula, data = truck_df)
-#summary(ofit0)
-count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
-  length(which(rstandard(ofit0) > 2)),
-  length(which(rstandard(ofit0) > 3)),
-  length(which(rstandard(ofit0) > 4)))
+# Fit a simple additive model using all non-character columns as predictors. This
+# will be a representative model for detecting outliers.
+columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
+no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
+outlier_fit_add = lm(no_char_additive_formula, data = truck_df)
+print_useful_summary_stats(outlier_fit_add)
+```
+
+The representative model has a high $R^2$, low p-value and low RMSE. We can use
+it to detect outliers.
+
+First look at the standardized residuals. By dividing the residuals by the standard
+error the rstandard follows a normal distribution with mean 0 and stddev of 1.
+We can look at the number of observations with standardized redisuals 1,2,3,4
+standard deviations from the mean. The higher the deviation the worse the
+observation fits our model and may have high influence.
+
+```{r outlier_analysis_1.1, echo=TRUE}
+count_gt_stddev = c(length(which(rstandard(outlier_fit_add) > 1)),
+  length(which(rstandard(outlier_fit_add) > 2)),
+  length(which(rstandard(outlier_fit_add) > 3)),
+  length(which(rstandard(outlier_fit_add) > 4)))
 number_of_stddevs = c(1,2,3,4)
 model_results = data.frame(number_of_stddevs, count_gt_stddev)
 colnames(model_results) = c("# of stddev", "Count of rows > stddev")
 knitr::kable(model_results)
-
-# Do some Cook's distance tests. The intersection of high-outlier, 
-# high-influence is 95%. Let's remove these from the dataset.
-high_influence_rows = which(cooks.distance(ofit0) > 4/length(ofit0$residuals))
-intersection_of_high_inf_high_outlier = intersect(which(rstandard(ofit0) > 4), high_influence_rows)
-length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] 
-
-# Let's take a look at the outlier rows to see if there's any commonality.
-outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
-outlier_df = truck_df[outlier_rows_to_remove, ]
 ```
 
+We have ``r count_gt_stddev[3]` rows > 3 stddev` and ``r count_gt_stddev[4]` rows > 4 stddev` 
+from the mean. These may affect the model if they have high leverage.
+
+```{r outlier_analysis_1.2, echo = TRUE}
+# Do some Cook's distance tests. Large Cook's distance implies high influence
+high_influence_rows = which(cooks.distance(outlier_fit_add) > 4/length(outlier_fit_add$residuals))
+length(high_influence_rows)
+# The intersection of large-outlier, high-influence is 95%.
+# Let's remove these from the dataset.
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
+pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] * 100
+pct
+pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] * 100
+pct
+```
+
+A very high percentage (``r pct`%`) of large-residual outlier rows are also high
+leverage, and therefore have high influence. These observations are good
+candidates for exclusion.
 
 
 ```{r outlier_analysis_2, echo=TRUE, results='hide'}
@@ -345,11 +426,11 @@ outlier_df = truck_df[outlier_rows_to_remove, ]
 ```{r outlier_analysis_3, echo=FALSE}
 par(mfrow=c(2,2))
 hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
-     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year (Outliers only)")
 hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
-     xlab="State", ylab = "Frequency", main = "Histogram of State")
-hist(log(outlier_df$mileage), breaks=30,
-     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+     xlab="State", ylab = "Frequency", main = "Histogram of State (Outliers only)")
+hist(log10(outlier_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage) (Outliers only)")
 
 # There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
 # fitted vs. residuals plot becomes waaaay more useful.
@@ -369,22 +450,35 @@ hist(log(outlier_df$mileage), breaks=30,
 #anova(ofit1, ofit2)
 ```
 
+Let's try removing some of these poorly fit points and see what happens to the
+model.
+
 Re-fit the mega_model with the outlier observations removed. The outlier rows
 we removed were very influential based on their rstandard and Cook's distance
 results. See if the beta coefficients change significantly or if the RMSE
 changes.
 
-```{r outlier_analysis_4, include=FALSE}
+```{r outlier_analysis_4, echo=TRUE}
 #formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
 #formula_str = update.formula(formula_str,  ~ . + log(mileage))
-ofit2_no_outliers = lm(mega_model_formula, data = truck_df[-outlier_rows_to_remove,])
-#summary(ofit2_no_outliers)
-print_useful_summary_stats(ofit2_no_outliers)
-plot_fitted_resid(ofit2_no_outliers)
+no_outlier_fit_add = lm(no_char_additive_formula, data = truck_df[-outlier_rows_to_remove,])
+#summary(no_outlier_fit_add)
+print_useful_summary_stats(no_outlier_fit_add)
 # Percentage change in model coefficients.
-abs((coef(ofit2_no_outliers) - coef(mega_model))/coef(ofit2_no_outliers)) * 100
+pct_chng_in_model_coeff = abs(
+  (coef(no_outlier_fit_add) - coef(outlier_fit_add)) /
+    coef(no_outlier_fit_add)) * 100
+# Which coefficients changed more than 10%?
+pct_chng_in_model_coeff[pct_chng_in_model_coeff > 10.0]
 #anova(mega_model, ofit2_no_outliers)
 ```
+Plot fitted vs residuals for a) all data, b) data with large outlier rows removed.
+
+```{r outlier_analysis_4.1, echo=FALSE}
+plot_fitted_resid(outlier_fit_add)
+plot_fitted_resid(no_outlier_fit_add)
+```
+
 
 It's clear from the code segment above that the RMSE and $R^2$ value of the
 model is mostly unaffected by removal of the outlier rows. However there is a large
@@ -393,9 +487,11 @@ the model.
 
 
 ```{r outlier_analysis_last, include=FALSE}
-free_memory(ofit1)
-free_memory(ofit2)
-free_memory(fit2_additive_all)
+#free_memory(ofit1)
+#free_memory(ofit2)
+#free_memory(fit2_additive_all)
+free_memory(no_outlier_fit_add)
+free_memory(outlier_fit_add)
 ```
 
 #### Discussion of Per - Region Models
