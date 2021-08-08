@@ -41,7 +41,6 @@ set_data_structure = function(dataset) {
   dataset$bed_length = as.numeric(dataset$bed_length)
   dataset$cabin = as.factor(dataset$cabin)
   dataset$city = as.factor(dataset$city)
-  # dataset$dealer_zip = as.factor(dataset$dealer_zip)
   dataset$engine_cylinders = as.factor(as.numeric(dataset$engine_cylinders))
   dataset$engine_type = as.factor(as.numeric(dataset$engine_type))
   dataset$exterior_color = as.factor(dataset$exterior_color)
@@ -452,6 +451,8 @@ further supports our conclusions on their colinearity.
 free_memory(pairs_df)
 ```
 
+&nbsp;
+
 ##### Outlier Removal
 Next, we attempt to identify the outliers in our data (observations which do not
 fit the model well). In our analysis, we look at these observations to measure their
@@ -491,11 +492,34 @@ outlier_df = truck_df[outlier_rows_to_remove,]
 - **`r count_gt_stddev[3]`** rows **> 3** standard deviations from the mean
 - **`r count_gt_stddev[4]`** rows **> 4** standard deviations from the mean
 
+&nbsp;
+
 A significant percentage (``r pct`%`) of observations with large-residuals also
 have high leverage and, therefore, have high influence. These observations are
 good candidates for exclusion from our dataset.
 
-```{r Outlier Analysis pt. 2, echo=FALSE}
+```{r Outlier Analysis pt. 2, echo=TRUE, warning=FALSE}
+# analyze outlier observations to see if there are commonalities in their data
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove,]
+
+# extraordinarily large number of Jeep Gladiators found in the outliers
+nrow(outlier_df[outlier_df[,"model_name"] == c("gladiator", "Gladiator"), ]) /
+    nrow(outlier_df) * 100
+
+# several Ford F150 as well
+nrow(outlier_df[outlier_df[,"model_name"] == c("F-150", "F150"), ]) /
+    nrow(outlier_df) * 100
+
+# a notably high count of 4x4 trucks
+nrow(outlier_df[outlier_df[,"wheel_system"] == c("4WD"), ]) /
+    nrow(outlier_df) * 100
+```
+
+&nbsp;
+
+##### Examples of Clear Outliers Within Predictor Distributions
+```{r Outlier Analysis pt. 3, echo=TRUE}
 par(mfrow=c(2,2))
 
 hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
@@ -511,7 +535,9 @@ based on their being influential (measured by `rstandard` and `cooks.distance`).
 Reviewing the affect of the outlier removal on the model's coefficients, helps us
 confirm whether or not there is significant influence from these observations.
 
-```{r Outlier Analysis pt. 3, echo=TRUE}
+&nbsp;
+
+```{r Outlier Analysis pt. 4, echo=TRUE}
 # refitted full model with outliers removed
 no_outlier_fit_add = lm(no_char_additive_formula, data = truck_df[-outlier_rows_to_remove,])
 # summary(no_outlier_fit_add)
@@ -541,13 +567,13 @@ We now continue our analysis with the influential outliers removed from our
 dataset (assuming they are user error, and not relevant to our model).
 
 
-```{r remove_outliers_from_truck_df, echo=TRUE}
+```{r Remove Outliers from Dataset, echo=TRUE}
 truck_df = truck_df[-outlier_rows_to_remove,]
 ```
 
 &nbsp;
 
-```{r Outlier Analysis pt. 4, include=FALSE}
+```{r Outlier Analysis pt. 5, include=FALSE}
 free_memory(no_outlier_fit_add)
 free_memory(outlier_fit_add)
 ```
@@ -619,6 +645,8 @@ mid_atlantic_int_model = lm(base_predictors_formula, data = mid_atlantic_data)
 print_useful_summary_stats(mid_atlantic_int_model)
 
 # refit model with identified significant interactions
+# significance was determined based on review of the model summary's coefficient
+# p-values
 significant_int_predictors = c("year:bed_length",
                                "year:mileage",
                                "maximum_seating:bed_length",
@@ -751,8 +779,9 @@ to the other models, making the base interaction model both complex and difficul
 to interpret.
 
 Before arriving at our `log` response model, we sought to improve the base
-interaction model by highlighting its most significant interactions. This
-approach resulted in a significant decrease in the number of predictors at
+interaction model by highlighting its most significant interactions. These
+interactions were selected through evaluating their `p-values` using `t` tests.
+This approach resulted in a significant decrease in the number of predictors at
 40 and a decent return in $R^2$ and RMSE. The improved interaction model boasts
 being relatively less complex and easier to interpret, when compared to its
 predecessor. And, although it provides results that may be adequate, we ultimately
