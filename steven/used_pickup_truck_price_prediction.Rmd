@@ -12,7 +12,7 @@ urlcolor: cyan
 
 ***
 
-```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
 options(scipen = 1, digits = 4, width = 80)
 library(knitr)
 library(readr)
@@ -27,13 +27,8 @@ opts_chunk$set(cache = TRUE, autodep = TRUE)
 ```
 
 ###### Authors: Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
-```{r import_cleaned_data, include = FALSE}
+```{r import_cleaned_data, include=FALSE}
 set.seed(12345)
-# TODO(anyone) - How should we import the csv data without adding it to the git repo?
-
-# POSSIBLE SOLUTION: would it be worth uploading the CSV to google drive or our sharedrive and access it via url?
-
-# For now just copy the .csv into your local git directory?
 truck_df = readr::read_csv("used_truck_data_with_region.csv")
 spec(truck_df)
 
@@ -46,7 +41,7 @@ set_data_structure = function(dataset) {
   dataset$bed_length = as.numeric(dataset$bed_length)
   dataset$cabin = as.factor(dataset$cabin)
   dataset$city = as.factor(dataset$city)
-  dataset$dealer_zip = as.factor(dataset$dealer_zip)
+  # dataset$dealer_zip = as.factor(dataset$dealer_zip)
   dataset$engine_cylinders = as.factor(as.numeric(dataset$engine_cylinders))
   dataset$engine_type = as.factor(as.numeric(dataset$engine_type))
   dataset$exterior_color = as.factor(dataset$exterior_color)
@@ -141,13 +136,9 @@ truck_df = set_data_structure(truck_df)
 # (city, lat, long) in the data frame. The vector of column names can be used
 # in formulas
 no_char_columns = c(
-  # X1 = col_double(),
-  # dealer_zip = col_character(),
  "back_legroom" ,
-  # bed" ,
   "bed_length" ,
   "cabin" ,
-  # city" ,
   "city_fuel_economy" ,
   "daysonmarket" ,
   "engine_cylinders" ,
@@ -169,22 +160,15 @@ no_char_columns = c(
   "is_new" ,
   "latitude" ,
   "length" ,
-  # listed_date = col_date(format = ""),
-  # listing_color" ,
   "longitude" ,
-  # make_name" ,
   "maximum_seating" ,
   "mileage" ,
-  # model_name" ,
   "owner_count" ,
   "salvage" ,
-  # "savings_amount" ,
   "seller_rating" ,
   "theft_title" ,
   "transmission" ,
-  # transmission_display" ,
   "wheel_system" ,
-  # wheel_system_display" ,
   "wheelbase" ,
   "width" ,
   "year" ,
@@ -271,27 +255,27 @@ Our target metrics, used to define a successful model, are **$RMSE$ <= 6000** &n
 ## Methods
 ### i. Naive Model Analysis
 
-##### Common Model Analysis (our hypothesis):
+##### Base Model (our hypothesis):
 We begin our analysis with an agreed upon "common" model, where we decide the
 model predictors to include based on our collective knowledge of the used car
 market. As consumers, we focus in on the attributes/variables that we consider
 most relevant and most important in determining the value of a vehicle on the
-market. This _naive_ model (our **hypothesis**) serves as our starting position
+market. This _naive_ base model (our **hypothesis**) serves as our starting position
 for exploring model improvements through transformations, interactions, and the
 introduction of additional predictor variables.
 
-```{r Naive Common Model (hypothesis), echo=TRUE, results = 'hide'}
-common_model = lm(price ~ engine_displacement + engine_cylinders
+```{r Naive Base Model (hypothesis), echo=TRUE, results='hide'}
+base_model = lm(price ~ engine_displacement + engine_cylinders
                   + highway_fuel_economy + horsepower + maximum_seating
                   + transmission + mileage + year + wheel_system + power_hp
                   + bed_length + cabin + salvage + franchise_dealer + state,
                   data = truck_df)
-print_useful_summary_stats(common_model)
+print_useful_summary_stats(base_model)
 ```
 
 &nbsp;
 
-##### Full Model Analysis (fit all non-character predictors):
+##### Full Model (fit all non-character predictors):
 Before continuing analysis, we fit an additional _naive_, "full" additive model,
 using all numeric and factor predictors without interactions. This approach
 improves both $R^2$ and $RMSE$ (when compared to our hypothesis model) due to
@@ -301,12 +285,13 @@ we can see (and validate some of our initial assumptions) that a number of them
 have high levels of colinearity. In addition, considering the large number of
 predictors, we further conclude that this "full" model is relatively complex.
 
-Despite the colinear relationships with the added predictors, the "full" model
-still provides helpful insight and a foundation for which we can draw comparisons
-against future models. This _base_ model will be used in assessing the impact of
-predictor/response transformations and in our outlier analysis.
+Despite the colinear relationships between the added predictors, the "full" model
+still provides helpful insight and a useful foundation from which we can draw
+comparisons against future models. This _base_ "full" model will be used in
+assessing the impact of predictor/response transformations and in our outlier
+analysis.
 
-```{r Naive Full Model Analysis, echo=TRUE, results = 'hide'}
+```{r Naive Full Model, echo=TRUE, results='hide'}
 # create formula for a simple additive model using all non-character variables
 full_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
 
@@ -364,7 +349,6 @@ hist(as.integer(truck_df$maximum_seating), breaks=30,
 &nbsp;
 
 ```{r Colinearity Analysis pt. 1, echo=FALSE}
-# TODO(aaronbotelho, li)
 pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year")
 pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns]
 pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (1)")
@@ -410,19 +394,21 @@ From **Scatterplot Matrix (3)**:
 - `latitude` and `longitude` do not appear to be useful predictors of the response
 - The plot of `latitude` vs `longitude` shows a map of the United States 
 
-##### Variance Inflation Factor Analysis
+&nbsp;
+
+##### Variance Inflation Factors
 As a compliment to our `pairs` scatterplot matrices, we examine variance inflation
 factors (`vif`) to determine which predictors are colinear with 1 or more of the
 others. The `vif` measures the proportion of the variance within a single predictor
 that can be explained by a linear combination of the other predictors. A high `vif`
 (>5) indicates colinearity.
 
-```{r Colinearity Analysis pt. 4, echo=FALSE}
+```{r Colinearity Analysis pt. 4, echo=FALSE, warning=FALSE}
 v = vif(full_model)
 v[v > 5]
 ```
 
-##### Key Observations
+**Key Observations**:
 
 - `exterior_color` & `interior_color` look to be poor predictors
   - multiple `exterior_color` values have a high `vif`
@@ -437,20 +423,16 @@ v[v > 5]
 - Multiple `regions` and `states` have a high `vif`
   - This will become significant, as we seek to build a global prediction model
 
-```{r Colinearity Analysis pt. 5, echo = TRUE, message = FALSE, warning = FALSE}
+```{r Colinearity Analysis pt. 5, echo=TRUE, message=FALSE, warning=FALSE}
 full_model_no_region_formula = update.formula(
   full_model_formula, ~ . -region -latitude -longitude)
 fm1 = lm(full_model_no_region_formula, data = truck_df)
-#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
-#formula_str = update.formula(formula_str,  ~ . + log(mileage))
 v = vif(fm1)
 v[v > 5]
 
 # fit with removed state predictor
 full_model_no_state_formula = update.formula(full_model_formula, ~ . -state -latitude -longitude)
 fm2 = lm(full_model_no_state_formula, data = truck_df)
-#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
-#formula_str = update.formula(formula_str,  ~ . + log(mileage))
 v = vif(fm2)
 v[v > 5]
 ```
@@ -470,33 +452,18 @@ further supports our conclusions on their colinearity.
 free_memory(pairs_df)
 ```
 
+##### Outlier Removal
 Next, we attempt to identify the outliers in our data (observations which do not
 fit the model well). In our analysis, we look at these observations to measure their
 respective leverages and influence on our model's predictors. We expect that these
 observations will have large residuals.
 
-```{r Outlier Analysis pt. 1, results = 'hide'}
+```{r Outlier Analysis pt. 1, echo=TRUE}
 # create formula for simplified additive model omitting character data types
 columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
 no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
 outlier_fit_add = lm(no_char_additive_formula, data = truck_df)
 print_useful_summary_stats(outlier_fit_add)
-
-# rstandard 
-# cooks.distance
-# 2 Naive Models ("full" model and “common” model) - Aaron or Anyone
-
-# ofit0 = lm(no_char_additive_formula, data = truck_df)
-# head(summary(ofit0)$coefficients, 10)
-# length(coef(ofit0))
-# count_gt_stddev = c(length(which(rstandard(ofit0) > 1)),
-#   length(which(rstandard(ofit0) > 2)),
-#   length(which(rstandard(ofit0) > 3)),
-#   length(which(rstandard(ofit0) > 4)))
-# number_of_stddevs = c(1,2,3,4)
-# model_results = data.frame(number_of_stddevs, count_gt_stddev)
-# colnames(model_results) = c("# of stddev", "Count of rows > stddev")
-# knitr::kable(model_results)
 
 count_gt_stddev = c(length(which(rstandard(outlier_fit_add) > 1)),
   length(which(rstandard(outlier_fit_add) > 2)),
@@ -521,14 +488,14 @@ outlier_rows_to_remove = intersection_of_high_inf_high_outlier
 outlier_df = truck_df[outlier_rows_to_remove,]
 ```
 
-- **`r count_gt_stddev[3]`** rows > 3 standard deviations from the mean
-- **`r count_gt_stddev[4]`** rows > 4 standard deviations from the mean
+- **`r count_gt_stddev[3]`** rows **> 3** standard deviations from the mean
+- **`r count_gt_stddev[4]`** rows **> 4** standard deviations from the mean
 
 A significant percentage (``r pct`%`) of observations with large-residuals also
 have high leverage and, therefore, have high influence. These observations are
 good candidates for exclusion from our dataset.
 
-```{r Outlier Analysis pt. 2, echo=TRUE, results='hide'}
+```{r Outlier Analysis pt. 2, echo=FALSE}
 par(mfrow=c(2,2))
 
 hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
@@ -537,27 +504,6 @@ hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
      xlab="State", ylab = "Frequency", main = "Histogram of State")
 hist(log(outlier_df$mileage), breaks=30,
      xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
-
-# # modest improvement in R^2 of 0.01 (or 1%)
-# # RMSE decrease of approximately 100
-# # fitted vs residuals plot
-# ofit1 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
-#            + I(mileage ^ 2) + maximum_seating + wheel_system + power_hp
-#            + bed_length + frame_damaged + salvage,
-#            data = truck_df[-outlier_rows_to_remove,])
-# summary(ofit1)
-# plot_fitted_resid(ofit1)
-# 
-# # fit additional model with outliers removed and added state predictor
-# ofit2 = lm(price ~ year + I(year ^ 2) + engine_displacement + mileage
-#            + I(mileage^2) + maximum_seating + wheel_system + power_hp
-#            + bed_length + frame_damaged + salvage + state,
-#            data = truck_df[-outlier_rows_to_remove,])
-# summary(ofit2)
-# plot_fitted_resid(ofit2)
-# 
-# # compare removed outlier models
-# anova(ofit1, ofit2)
 ```
 
 We continue our exploration by refitting the "full" model with outliers removed
@@ -565,11 +511,7 @@ based on their being influential (measured by `rstandard` and `cooks.distance`).
 Reviewing the affect of the outlier removal on the model's coefficients, helps us
 confirm whether or not there is significant influence from these observations.
 
-<!-- ### iii. Refit Model with Outliers Removed -->
-```{r Outlier Analysis pt. 3, results = 'hide'}
-# formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
-# formula_str = update.formula(formula_str,  ~ . + log(mileage))
-
+```{r Outlier Analysis pt. 3, echo=TRUE}
 # refitted full model with outliers removed
 no_outlier_fit_add = lm(no_char_additive_formula, data = truck_df[-outlier_rows_to_remove,])
 # summary(no_outlier_fit_add)
@@ -586,18 +528,26 @@ pct_chng_in_model_coeff[pct_chng_in_model_coeff > 10.0]
 # compare removed outlier models
 plot_fitted_resid(outlier_fit_add)
 plot_fitted_resid(no_outlier_fit_add)
-# anova(full_model, full_no_outliers)
 ```
 
 From the above code chunk, we find that the $RMSE$ and $R^2$ values of the model
 are, mostly, unaffected by the removal of outlier observations. There is, however,
-a large percentage change (~3 - 9%) in some of the model's coefficients ($\beta$)
-after refitting the "full" model.
+a large percentage change (~50 - 400%) in some of the model's coefficients ($\beta$)
+after refitting. We conclude that this change is rather significant, considering
+there are only ``r count_gt_stddev[4]` outlier rows > 4 stddev``
+and ``r nrow(truck_df)`` in the dataset.
+
+We now continue our analysis with the influential outliers removed from our
+dataset (assuming they are user error, and not relevant to our model).
+
+
+```{r remove_outliers_from_truck_df, echo=TRUE}
+truck_df = truck_df[-outlier_rows_to_remove,]
+```
+
+&nbsp;
 
 ```{r Outlier Analysis pt. 4, include=FALSE}
-# free_memory(ofit1)
-# free_memory(ofit2)
-# free_memory(fit2_additive_all)
 free_memory(no_outlier_fit_add)
 free_memory(outlier_fit_add)
 ```
@@ -612,81 +562,31 @@ by comparing our findings across the regions. This section focuses on our model
 exploration of the **Mid-Atlantic** (NY, PA, and NJ), but additional analysis
 can be found in the [Appendix](#appendix).
 
-```{r Regional Model Analysis - Mid Atlantic, results = 'hide'}
+```{r Regional Model Analysis - Mid Atlantic, echo=TRUE}
+set.seed(12345)
 par(mfrow=c(1,1))
 
-# process dataset for mid atlantic region analysis
+# remove unusable character variables from dataframe
 cols_to_keep = append(intersect(no_char_columns, colnames(truck_df)), "price")
-car_data = truck_df[, cols_to_keep]
-mid_atlantic_data = car_data[car_data$region == "Mid Atlantic",]
-drops = c("region")
-mid_atlantic_data = mid_atlantic_data[ , !(names(mid_atlantic_data) %in% drops)]
-
-# fit base model
-base_atlantic_model = lm(price ~ engine_displacement
-                         + engine_cylinders + highway_fuel_economy + horsepower
-                         + maximum_seating + transmission + mileage + year
-                         + wheel_system + power_hp + bed_length + # cabin
-                         + salvage + franchise_dealer, data = mid_atlantic_data)
-head(summary(base_atlantic_model)$coefficients, 10)
-length(coef(base_atlantic_model))
-calc_loocv_rmse(base_atlantic_model)
-cal_rmse(base_atlantic_model)
-
-# fit base model + state (state is significant)
-base_atlantic_model_state = lm(price ~ engine_displacement
-                               + engine_cylinders + highway_fuel_economy + horsepower
-                               + maximum_seating + transmission + mileage + year
-                               + wheel_system + power_hp + bed_length + #cabin
-                               + salvage + franchise_dealer + state,
-                               data = mid_atlantic_data)
-head(summary(base_atlantic_model_state)$coefficients, 10)
-length(coef(base_atlantic_model_state))
-calc_loocv_rmse(base_atlantic_model_state)
-cal_rmse(base_atlantic_model_state)
-anova(base_atlantic_model, base_atlantic_model_state)
-
-# fit full mid atlantic model
-full_midat_model = lm(price ~ ., data = mid_atlantic_data)
-calc_loocv_rmse(full_midat_model)
-cal_rmse(full_midat_model)
-
-# fit optimized model via backward BIC search
-n = length(resid(full_midat_model))
-model_bic_midat = step(full_midat_model, direction = "backward", k = log(n), trace = 0)
-head(summary(model_bic_midat)$coefficients, 10)
-length(coef(model_bic_midat))
-calc_loocv_rmse(model_bic_midat)
-cal_rmse(model_bic_midat)
-
-# fit improved model based on selection model's predictor significance
-improved_midat_model= lm(formula = price ~ back_legroom
-                         + bed_length + daysonmarket + franchise_dealer
-                         + fuel_tank_volume + fuel_type + height
-                         + highway_fuel_economy + horsepower + isCab + is_new
-                         + longitude + maximum_seating + mileage + seller_rating
-                         + wheel_system + wheelbase + width + year + torque_lb_ft
-                         + torque_rpm + state,
-                         data = mid_atlantic_data)
-head(summary(improved_midat_model)$coefficients, 10)
-length(coef(improved_midat_model))
-calc_loocv_rmse(improved_midat_model)
-cal_rmse(improved_midat_model)
-
-#-----------------------------#
+truck_df = truck_df[, cols_to_keep]
 
 # test/train split of dataset
 trn_idx = sample(nrow(truck_df), nrow(truck_df) * 0.8)
 truck_df_trn = truck_df[trn_idx,]
 truck_df_tst = truck_df[-trn_idx,]
 
-# fit base model
+# process dataset for mid atlantic region analysis
+mid_atlantic_data = truck_df_trn[truck_df_trn$region == "Mid Atlantic",]
+drops = c("region", "state")
+mid_atlantic_data = mid_atlantic_data[ , !(names(mid_atlantic_data) %in% drops)]
+
+# fit mid_atlantic_base_model
 base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
 base_predictors_formula = formula(paste("price ~", paste("", base_predictors, sep = " ", collapse = " +")))
 mid_atlantic_base_model = lm(base_predictors_formula, data = mid_atlantic_data)
 print_useful_summary_stats(mid_atlantic_base_model)
 
-# fit full model
+# fit mid_atlantic_full_model
 mid_atlantic_full_model = lm(price ~ ., data = mid_atlantic_data)
 print_useful_summary_stats(mid_atlantic_full_model)
 
@@ -698,7 +598,20 @@ summary(base_model_bic)
 print_useful_summary_stats(base_model_bic)
 
 # add interactions to base model to explore significance
-base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
+base_predictors = c("engine_displacement",
+                    "engine_cylinders",
+                    "highway_fuel_economy",
+                    "horsepower",
+                    "maximum_seating",
+                    "transmission",
+                    "mileage",
+                    "year",
+                    "wheel_system",
+                    "power_hp",
+                    "bed_length",
+                    "cabin",
+                    "salvage",
+                    "franchise_dealer")
 base_interactions = combn(base_predictors, 2, FUN = paste, collapse = ":")
 base_interactions_predictors = c(base_predictors, base_interactions)
 base_predictors_formula = formula(paste("price ~", paste("", base_interactions_predictors, sep = " ", collapse = " +")))
@@ -706,8 +619,13 @@ mid_atlantic_int_model = lm(base_predictors_formula, data = mid_atlantic_data)
 print_useful_summary_stats(mid_atlantic_int_model)
 
 # refit model with identified significant interactions
-significant_int_predictors = c("year:bed_length", "year:mileage", "maximum_seating:bed_length",
-      "engine_cylinders:highway_fuel_economy", "engine_cylinders:horsepower", "engine_displacement:engine_cylinders",       "engine_displacement:highway_fuel_economy")
+significant_int_predictors = c("year:bed_length",
+                               "year:mileage",
+                               "maximum_seating:bed_length",
+                               "engine_cylinders:highway_fuel_economy",
+                               "engine_cylinders:horsepower",
+                               "engine_displacement:engine_cylinders",
+                               "engine_displacement:highway_fuel_economy")
 improved_interactions_predictors = c(base_predictors, significant_int_predictors)
 base_predictors_formula = formula(paste("price ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
 improved_mid_atlantic_int_model = lm(base_predictors_formula, data = mid_atlantic_data)
@@ -721,57 +639,9 @@ significant interaction terms in order to maintain the least number of variables
 
 &nbsp;
 
-<!-- ### v. Global Model Diagnostic Visualizations -->
-```{r ANOVA Analysis of Global Model, results = 'hide', include = FALSE}
-
-```
-
 ### iv. Significant Variable Transformations and Interactions
-```{r Significant Variable Transformations and Interactions pt. 1, results = 'hide'}
+```{r Significant Variable Transformations and Interactions pt. 1, results='hide'}
 boxcox(improved_mid_atlantic_int_model, plotit = TRUE)
-
-# improved_mid_atlantic_cox = lm(formula = (price ^ 0.26 - 1)/0.26 ~ back_legroom
-#                          + bed_length + daysonmarket + franchise_dealer
-#                          + fuel_tank_volume + fuel_type + height
-#                          + highway_fuel_economy + horsepower + isCab + is_new
-#                          + longitude + maximum_seating + mileage + seller_rating
-#                          + wheel_system + wheelbase + width + year + torque_lb_ft
-#                          + torque_rpm + state,
-#                          data = mid_atlantic_data)
-# summary(improved_mid_atlantic_cox)
-# bptest(improved_mid_atlantic_cox)
-# plot_fitted_resid(improved_mid_atlantic_cox)
-# 
-# improved_mid_atlantic_log = lm(log(price) ~ engine_displacement + engine_cylinders
-#              + highway_fuel_economy + horsepower + maximum_seating + mileage
-#              + year + wheel_system + bed_length + franchise_dealer,
-#              data = mid_atlantic_data)
-# summary(improved_mid_atlantic_log)
-# bptest(improved_mid_atlantic_log)
-# plot_fitted_resid(improved_mid_atlantic_log)
-# 
-# improved_mid_atlantic_log_reduced = lm(log(price) ~ engine_displacement + engine_cylinders
-#                      + highway_fuel_economy + horsepower + maximum_seating
-#                      + mileage + year + wheel_system + bed_length
-#                      + franchise_dealer,
-#                      data = mid_atlantic_data)
-# summary(improved_mid_atlantic_log_reduced)
-# bptest(improved_mid_atlantic_log_reduced)
-# plot_fitted_resid(improved_mid_atlantic_log_reduced)
-# 
-# improved_mid_atlantic_log_int = lm(log(price) ~ engine_displacement + engine_cylinders
-#                      + highway_fuel_economy + horsepower + maximum_seating
-#                      + mileage + year + wheel_system + bed_length
-#                      + franchise_dealer + year:bed_length + year:mileage
-#                      + maximum_seating:bed_length
-#                      + engine_cylinders:highway_fuel_economy
-#                      + engine_cylinders:horsepower
-#                      + engine_displacement:engine_cylinders
-#                      + engine_displacement:highway_fuel_economy,
-#                      data = mid_atlantic_data)
-# summary(improved_mid_atlantic_log_int)
-# bptest(improved_mid_atlantic_log_int)
-# plot_fitted_resid(improved_mid_atlantic_log_int)
 
 # fitted vs residuals and QQ plots for improved_mid_atlantic_int_model
 plot_fitted_resid(improved_mid_atlantic_int_model)
@@ -785,31 +655,39 @@ print_useful_summary_stats(log_mid_atlantic_int_model)
 plot_fitted_resid(log_mid_atlantic_int_model)
 ```
 
-Comparing a **fitted vs residuals** plot from before and after the log-transformation
-of the response variable, as well as an analysis of the results from the
-log model, we see very significant improvements.
+From the Box-Cox analysis, log-likelihood reaches a maximum when $\lambda$ is
+between `0` and `0.5`. Therefore, we choose to have a log transformation on our
+response variable, `price`.
+
+Comparing the **fitted vs residuals** plots from before and after the applied
+log-transformation of the response variable, along with our analysis of the
+results from the log model, we see very significant improvements.
 
 At this point, we have arrived on a well-fitted `price` prediction regional model
 for the used truck dataset. For us to achieve an equally effective global model
 for all US data, we require further ANOVA testing. This exploration will determine
 the significance of including `region` as a model predictor.
 
-```{r Significant Variable Transformations and Interactions pt. 2, results = 'hide', warning=FALSE}
-# apply best regional model to all us data
+```{r Significant Variable Transformations and Interactions pt. 2, warning=FALSE}
+# use regional model to fit a global model to all us data (not including region as a predictor)
 base_predictors_formula = formula(paste("log(price) ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
-regional_model = lm(base_predictors_formula, data = truck_df_trn)
-print_useful_summary_stats(regional_model)
+global_model = lm(base_predictors_formula, data = truck_df_trn)
+print_useful_summary_stats(global_model)
 
-# ANOVA test for regional vs global models
+# ANOVA test global model with region vs without region as a predictor
 add_region = c(improved_interactions_predictors, "region")
 formula = formula(paste("log(price) ~", paste("", add_region, sep = " ", collapse = " +")))
 global_model_add_region = lm(formula, data = truck_df_trn)
 print_useful_summary_stats(global_model_add_region)
-anova(regional_model, global_model_add_region)["Pr(>F)"]
+anova(global_model, global_model_add_region)["Pr(>F)"]
 
-# diagnostics for regional model
-rmse_trn = sqrt(mean((truck_df_trn$price - predict(global_model_add_region, truck_df_trn)) ^ 2))
-rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model_add_region, truck_df_tst)) ^ 2))
+# diagnostics for global model
+rmse_trn = sqrt(mean((truck_df_trn$price - predict(global_model, truck_df_trn)) ^ 2))
+rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model, truck_df_tst)) ^ 2))
+
+# diagnostics for global model with region
+(rmse_trn = sqrt(mean((truck_df_trn$price - predict(global_model_add_region, truck_df_trn)) ^ 2)))
+(rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model_add_region, truck_df_tst)) ^ 2)))
 ```
 
 Per the results of the ANOVA, it is clear that `region` is significant as a
@@ -829,31 +707,114 @@ base model, along with the initial "full" additive model, we applied the
 demonstrated analysis and selection techniques to finalize a region-agnostic
 (global) fit for predicting the response variable, `price`.
 
-```{r Model Comparison Table, echo = FALSE, include = FALSE}
-base_model = comparison_stats(mid_atlantic_base_model)
-full_modle = comparison_stats(mid_atlantic_full_model)
-base_bic_model = comparison_stats(base_model_bic)
-base_interaction_model = comparison_stats(mid_atlantic_int_model)
-improved_interaction_model= comparison_stats(improved_mid_atlantic_int_model)
-log_model = comparison_stats(log_mid_atlantic_int_model)
-stats = rbind(base_model, full_modle, base_bic_model, base_interaction_model, improved_interaction_model, log_model)
-knitr::kable(stats)
+&nbsp;
+
+##### Model Comparison
+|Model                          |$(p - 1)$                                             |RMSE                                                 |$R^2$                                                      |BP Test                                                                                            |Shapiro-Wilk Test|
+|:------------------------------|:-----------------------------------------------------|:----------------------------------------------------|:----------------------------------------------------------|:--------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------------------------------------|
+|**Base Model**                 |`r length(coef(mid_atlantic_base_model)) - 1`         |`r cal_rmse(mid_atlantic_base_model)`                |`r summary(mid_atlantic_base_model)$r.squared`             |`r ifelse(bptest(mid_atlantic_base_model)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$        |`r ifelse(shapiro.test(sample(resid(mid_atlantic_base_model), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$        |
+|**Full Model**                 |`r length(coef(mid_atlantic_full_model)) - 1`         |`r cal_rmse(mid_atlantic_full_model)`                |`r summary(mid_atlantic_full_model)$r.squared`             |`r ifelse(bptest(mid_atlantic_full_model)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$        |`r ifelse(shapiro.test(sample(resid(mid_atlantic_full_model), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$        |
+|**Base BIC Model**             |`r length(coef(base_model_bic)) - 1`                  |`r cal_rmse(base_model_bic)`                         |`r summary(base_model_bic)$r.squared`                      |`r ifelse(bptest(base_model_bic)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$                 |`r ifelse(shapiro.test(sample(resid(base_model_bic), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$                 |
+|**Base Interaction Model**     |`r length(coef(mid_atlantic_int_model)) - 1`          |`r cal_rmse(mid_atlantic_int_model)`                 |`r summary(mid_atlantic_int_model)$r.squared`              |`r ifelse(bptest(mid_atlantic_int_model)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$         |`r ifelse(shapiro.test(sample(resid(mid_atlantic_int_model), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$         |
+|**Improved Interaction Model** |`r length(coef(improved_mid_atlantic_int_model)) - 1` |`r cal_rmse(improved_mid_atlantic_int_model)`        |`r summary(improved_mid_atlantic_int_model)$r.squared`     |`r ifelse(bptest(improved_mid_atlantic_int_model)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$|`r ifelse(shapiro.test(sample(resid(improved_mid_atlantic_int_model), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$|
+|**Log Transform Model**        |`r length(coef(log_mid_atlantic_int_model)) - 1`      |`r cal_rmse(log_mid_atlantic_int_model)`             |`r summary(log_mid_atlantic_int_model)$r.squared`          |`r ifelse(bptest(log_mid_atlantic_int_model)$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$     |`r ifelse(shapiro.test(sample(resid(log_mid_atlantic_int_model), 5000))$p.value > 0.1, 'Fail to reject', 'Reject')` $H_0$     |
+
+&nbsp;
+
+From the above table, it quickly becomes clear why we have chosen the `log`
+response model as our final prediction model.
+
+Starting with the base model, a $R^2$ of 0.7528 is among the lowest that we found
+across all of our linear models. This comes as no surprise, however, given we
+started with a simple and "naive" approach.
+
+Similarly unsurprising, when analyzing the full model, we came across a much higher
+$R^2$ and a favorable RMSE. Unfortunately, as expected with full, exhaustive models,
+the number of predictors has become quite large, making the full model complex
+and not an ideal model for interpretation.
+
+After applying a backward search, leveraging BIC to penalize against keeping
+predictors from our base model, we find ourselves with a model that is the easiest
+to interpret. Unfortunately, as much as we seek to simplify our models in linear
+regression, we are focusing on the strength of our models as predictors. Our
+backwards BIC selected model sacrifices prediction power, as seen by the $R^2$
+and RMSE decreasing and increasing respectively. In the end, we're left with
+results that are not far off from our initial "naive" base model.
+
+As a result of our findings across the base, full, and backwards BIC models, we
+decided to introduce model interactions. In our base interaction model, we make
+use of all significant predictors along with all two-way interactions between them.
+In doing so, we found some imrpovements to the $R^2$ and RMSE. In fact, they wound
+up very close to the full additive model. Alas, as we found with the full additive
+model, the number of predictors becomes painfully extraordinarily large relative
+to the other models, making the base interaction model both complex and difficult
+to interpret.
+
+Before arriving at our `log` response model, we sought to improve the base
+interaction model by highlighting its most significant interactions. This
+approach resulted in a significant decrease in the number of predictors at
+40 and a decent return in $R^2$ and RMSE. The improved interaction model boasts
+being relatively less complex and easier to interpret, when compared to its
+predecessor. And, although it provides results that may be adequate, we ultimately
+decided to explore the transformation of the response as a final model improvement.
+
+&nbsp;
+
+```{r Prediction Setup, include=FALSE}
+num_size = 2000
+drops = c("region")
+tst_idx = sample(nrow(truck_df_tst), num_size)
+tst_data = truck_df_tst[tst_idx,]
+tst_data = tst_data[, cols_to_keep]
+tst_data = tst_data[ , !(names(tst_data) %in% drops)]
+
+## base model prediction
+prd_base_err = predict(mid_atlantic_base_model, tst_data) - tst_data$price
+prd_base_err_mean = mean(prd_base_err)
+prd_base_err_std = sd(prd_base_err)
+
+## full model prediction
+prd_full_err = predict(mid_atlantic_full_model, tst_data) - tst_data$price
+prd_full_err_mean = mean(prd_full_err)
+prd_full_err_std = sd(prd_full_err)
+
+## BIC model prediction
+prd_bic_err = predict(base_model_bic, tst_data) - tst_data$price
+prd_bic_err_mean = mean(prd_bic_err)
+prd_bic_err_std = sd(prd_bic_err)
+
+## interaction model prediction
+prd_bicint_err = predict(mid_atlantic_int_model, tst_data) - tst_data$price
+prd_bicint_err_mean = mean(prd_bicint_err)
+prd_bicint_err_std = sd(prd_bicint_err)
+
+## improved interaction model prediction
+prd_imp_bicint_err = predict(improved_mid_atlantic_int_model, tst_data) - tst_data$price
+prd_imp_bicint_err_mean = mean(prd_imp_bicint_err)
+prd_imp_bicint_err_std = sd(prd_imp_bicint_err)
+
+## log transformation model prediction
+prd_log_err = exp(predict(log_mid_atlantic_int_model, tst_data)) - tst_data$price
+prd_log_err_mean = mean(prd_log_err)
+prd_log_err_std = sd(prd_log_err)
 ```
 
-```{r}
-# TODO
-### We should show comparisons between these models and make our selection (our global model), including explanations as to why this decision was made.
+##### Model Prediction
+|Model                          |Mean Prediction Error                                 |Prediction Error Standard Deviation |
+|:------------------------------|:---------------------------------------------------:|:-----------------------------------:|
+|**Base Model**                 |`r prd_base_err_mean`                                 |`r prd_base_err_std`                |
+|**Full Model**                 |`r prd_full_err_mean`                                 |`r prd_full_err_std`                |
+|**Base BIC Model**             |`r prd_bic_err_mean`                                  |`r prd_bic_err_std`                 |
+|**Base Interaction Model**     |`r prd_bicint_err_mean`                               |`r prd_bicint_err_std`              |
+|**Improved Interaction Model** |`r prd_imp_bicint_err_mean`                           |`r prd_imp_bicint_err_std`          |
+|**Log Transform Model**        |`r prd_log_err_mean`                                  |`r prd_log_err_std`                 |
 
-### For the models that we choose not to proceed with, a brief explanation behind why they were not favorable will be sufficient.
+&nbsp;
 
-### Should we plot anything with our commentary stating why it is not an adequate or best model selection?
-
-### Do we want to move all of our commentary from the Methods section into Results?
-```
-
-##### Base Model (hypothesis)
+##### Base Model
 ```{r Base Model (hypothesis)}
 format(names(coef(mid_atlantic_base_model)[-1]), fill = getOption("width"))
+hist(prd_base_err, breaks = 100, main = "Residual Distribution of Base model")
 ```
 
 &nbsp;
@@ -861,6 +822,7 @@ format(names(coef(mid_atlantic_base_model)[-1]), fill = getOption("width"))
 ##### Full Model
 ```{r Full Model}
 format(names(coef(mid_atlantic_full_model)[-1]), fill = getOption("width"))
+hist(prd_full_err, breaks = 100, main = "Residual Distribution of Full Model")
 ```
 
 &nbsp;
@@ -868,6 +830,7 @@ format(names(coef(mid_atlantic_full_model)[-1]), fill = getOption("width"))
 ##### Improved Interaction Model
 ```{r Improved Interaction Model}
 format(names(coef(improved_mid_atlantic_int_model)[-1]), fill = getOption("width"))
+hist(prd_imp_bicint_err, breaks = 100, main = "Residual Distribution of Improved Interaction Model")
 ```
 
 &nbsp;
@@ -875,29 +838,98 @@ format(names(coef(improved_mid_atlantic_int_model)[-1]), fill = getOption("width
 ##### Finalized Global Model (Log Transform)
 ```{r Finalized Global Model (Log Transform)}
 format(names(coef(log_mid_atlantic_int_model)[-1]), fill = getOption("width"))
+hist(prd_log_err, breaks = 100, main = "Residual Distribution of Log Response Model")
 ```
+
+&nbsp;
+
+##### Fitted vs Residual & QQ Plots
+```{r Model FvR Plots}
+par(mfrow=c(2,2))
+
+plot_fitted_resid(mid_atlantic_base_model)
+plot_fitted_resid(mid_atlantic_full_model)
+plot_fitted_resid(improved_mid_atlantic_int_model)
+plot_fitted_resid(log_mid_atlantic_int_model)
+```
+
+_Base Model (top-left), Full Model (top-right), Improved Interaction Model (bottom-left), Log Response Model (bottom-right)_
+
+&nbsp;
+
+```{r Model QQ Plots}
+par(mfrow=c(2,2))
+
+plot_qq(mid_atlantic_base_model)
+plot_qq(mid_atlantic_full_model)
+plot_qq(improved_mid_atlantic_int_model)
+plot_qq(log_mid_atlantic_int_model)
+```
+
+_Base Model (top-left), Full Model (top-right), Improved Interaction Model (bottom-left), Log Response Model (bottom-right)_
 
 ---
 
 ## Discussion
-```{r}
-# TODO
-### This is a good opportunity to include some narrative around the linear model assumptions (linearity, independence, normality, equal variance).
+As previously demonstrated in the [Results](#results) section, the diagnostic
+analysis of each of our models failed to support the **LINE** assumptions of
+linear regression. More specifically, the assumptions of error (residuals)
+normality and constant variance.
 
-### Mainly, discussion is used to articulate why our chosen model(s) is the best option.
+The null hypotheses, for each of the Breusch-Pagan tests we conducted for constant
+variance, were all rejected. The same is true for each Shapiro-Wilk test performed,
+thereby indicating that the "normal distribution" of our models' residuals is
+suspect. As noted in our class lectures, these tests are not 100% accurate, but
+definitely raise questions about our dataset, suggesting that it may not be
+"ideal" (or in an optimal state) per **LINE** criteria. Nonetheless, we choose to
+not write off our efforts, as our model may be "close enough" to be statistically
+useful.
 
-### Let's be sure to talk about how we set our targets for the project and why we chose those, since there is expectation around us having explored the balancing of different measures that pertain to the "wellness of fit" of a model.
-```
+Reviewing the **fitted vs residuals** plots during our analysis, revealed that
+data, when parsed by region, has a mean of nearly `0` at all fitted value data
+points for our `Improved Interaction Model`. The spread of the fitted values is
+higher at lower prices than at higher prices, though not by much. We can, therefore,
+conclude that our per-region data is linear, and reflects close to constant variance,
+albeit lower at higher `price` points.
 
-|Model                          |$(p - 1)$                                             |LOOCV RMSE                                           |Adjusted $R^2$                                             |
-|:------------------------------|:-----------------------------------------------------|:----------------------------------------------------|:----------------------------------------------------------|
-|**Base Model** (hypothesis)    |`r length(coef(mid_atlantic_base_model)) - 1`         |`r calc_loocv_rmse(mid_atlantic_base_model)`         |`r summary(mid_atlantic_base_model)$adj.r.squared`         |
-|**Full Model**                 |`r length(coef(mid_atlantic_full_model)) - 1`         |`r calc_loocv_rmse(mid_atlantic_full_model)`         |`r summary(mid_atlantic_full_model)$adj.r.squared`         |
-|**Base BIC Model**             |`r length(coef(base_model_bic)) - 1`                  |`r calc_loocv_rmse(base_model_bic)`                  |`r summary(base_model_bic)$adj.r.squared`                  |
-|**Base Interaction Model**     |`r length(coef(mid_atlantic_int_model)) - 1`          |`r calc_loocv_rmse(mid_atlantic_int_model)`          |`r summary(mid_atlantic_int_model)$adj.r.squared`          |
-|**Improved Interaction Model** |`r length(coef(improved_mid_atlantic_int_model)) - 1` |`r calc_loocv_rmse(improved_mid_atlantic_int_model)` |`r summary(improved_mid_atlantic_int_model)$adj.r.squared` |
-|**Log Transform Model**        |`r length(coef(log_mid_atlantic_int_model)) - 1`      |`r calc_loocv_rmse(log_mid_atlantic_int_model)`      |`r summary(log_mid_atlantic_int_model)$adj.r.squared`      |
+Examining the **Q-Q** plots for our models shows that, for by-region analysis, the
+distribution of their residuals follows the normal **Q-Q** line, even at extreme
+values of `price`. This information supports our conclusion that, when fit by
+region, our models' residuals appear to be distributed normally. Conversely, when
+the same models are used to fit global (all-regions) data the **Q-Q** plot shows
+notable deviations at high and low theoretical values of `price`.
 
+The combined evidence of the **BP** and **Shapiro-Wilk** tests, along with the
+**fitted vs residuals** and **Q-Q** plots, indicate that our regression analysis
+reflects a proper adherence to the **LINE** assumption criteria at the regional
+model level. When the same models are applied to observations spanning the entire
+US, we begin to lose confidence in our assumptions, as error normality decreases
+and model variance increases.
+
+Had we had the time, we believe some additional effort could have been made to
+refine the accuracy of the model(s) on the full US dataset. It would seem
+reasonable to assume that using a larger dataset would likely expose our model(s)
+to larger sets of outlier observations with potentially unusual or invalid data.
+Additionally, we did point out that `region` and `state` were both identified as
+significant predictors from the start of our analysis. Predictors that have
+proven to be difficult to model. `state` and `region` have a high probability of
+being colinear, but may not necessarily be colinear, depending on the region(s)
+and state(s) in question.
+
+Some further analysis regarding which states are truly/particularly significant
+and which are colinear may have allowed us the ability to better process our
+dataset. One idea we had considered was clustering states into more granular
+regions, which may have potentially improved our RMSE, error normality, and
+constant variance assumptions.
+
+We also considered linking our geographic information, (e.g. - `latitude`, `longitude`,
+`zip_code`, `state`, etc.) with other datasets (e.g. - demographic, financial) to
+aid in uncovering some useful interactions between variables such as `income`, `age`,
+or `climate`. We believe that such an approach would have also led to improvements
+of our models' performance. That said, we chose not to overburden ourselves with
+the "nice-to-haves", given our time constraint. In the end, however, we suspect,
+due to the differences we observed between our regional and global models, that
+a greater focus on geography could have helped to improve our prediction results.
 
 ---
 
