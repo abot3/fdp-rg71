@@ -302,7 +302,7 @@ print_useful_summary_stats(full_model)
 
 &nbsp;
 
-### ii. Outlier Analysis
+### ii. Colinearity & Outlier Analysis
 With our dataset cleaned and structured, we seek to better understand the
 distributions and correlations found across its variables. The following analysis
 uses histograms to visualize these variable distributions and help to identify

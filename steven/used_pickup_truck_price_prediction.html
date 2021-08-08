@@ -175,7 +175,7 @@ pre code {
 <li><a href="#methods">Methods</a>
 <ul>
 <li><a href="#i.-naive-model-analysis">i. Naive Model Analysis</a></li>
-<li><a href="#ii.-outlier-analysis">ii. Outlier Analysis</a></li>
+<li><a href="#ii.-colinearity-outlier-analysis">ii. Colinearity &amp; Outlier Analysis</a></li>
 <li><a href="#iii.-regional-model-analysis---mid-atlantic">iii. Regional Model Analysis - Mid Atlantic</a></li>
 <li><a href="#iv.-significant-variable-transformations-and-interactions">iv. Significant Variable Transformations and Interactions</a></li>
 </ul></li>
@@ -517,8 +517,8 @@ print_useful_summary_stats(full_model)</code></pre>
 <p> </p>
 </div>
 </div>
-<div id="ii.-outlier-analysis" class="section level3">
-<h3>ii. Outlier Analysis</h3>
+<div id="ii.-colinearity-outlier-analysis" class="section level3">
+<h3>ii. Colinearity &amp; Outlier Analysis</h3>
 <p>With our dataset cleaned and structured, we seek to better understand the distributions and correlations found across its variables. The following analysis uses histograms to visualize these variable distributions and help to identify the attributes we expect, or assume, will be significant in our final model.</p>
 <p>Applying the <code>pairs</code> function (generating a scatterplot matrix) and exploring covariance functions, we break down the relationships between predictors, as well as how they relate to the response. Identifying the linear relationships, which indicate colinearity, allows for a first round of model optimization/simplification by removing redundant (colinear) predictors. The scatterplot matrix further provides a high-level view of which predictors have a linear, quadratic, or logarithmic relationship with the response variable.</p>
 <p>After analyzing colinearity and variable distribution we focus in on the observations, themselves. The project’s dataset was scraped from the <a href="https://www.cargurus.com/">Cargurus</a> website with user-generated input and was not filtered or normalized. Upon further analysis, we discovered rows containing user errors, e.g - a price of $10,000 entered as $100,000, or a 4 cylinder vehicle mistakenly listed as 6 cylinders. Since we cannot manually search the data for these erroneous entries but can use outlier analysis and standardized residuals to draw reasonable assumptions, we can find and highlight rows that fall within many standard deviations from the population mean.</p>
