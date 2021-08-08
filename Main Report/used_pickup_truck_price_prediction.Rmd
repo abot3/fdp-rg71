@@ -702,7 +702,71 @@ rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model_add_region, truc
 ### Discussion
 ```{r}
 # TODO
+
+
 ```
+
+## Discussion
+```{r}
+# TODO
+### This is a good opportunity to include some narrative around the linear model assumptions (linearity, independence, normality, equal variance).
+
+### Mainly, discussion is used to articulate why our chosen model(s) is the best option.
+
+### Let's be sure to talk about how we set our targets for the project and why we chose those, since there is expectation around us having explored the balancing of different measures that pertain to the "wellness of fit" of a model.
+```
+
+As discussed in the results section the analysis of our models failed to conclusively
+validate the assumption that our models errors (residuals) are normally distributed
+and constant variance as per the LINE assumptions of linear regression.
+
+We ran the Breusch-Pagan test for constant variance. On all of our models we rejected
+the null hypothesis that our residuals are constant variance. The same story is
+true for the Shapiro-Wilk test. For all the models we considered we rejected the 
+null hypothesis, that the residuals are normally distributed. As discussed in class
+these tests are not 100% accurate, so our data may not be "ideal" per the LINE
+criteria, but our model may be "close enough" to be statistically useful.
+
+To determine whether our model is close enough to normal and constant variance to
+be statistically useful we can turn to the Fitted vs. Residuals
+plot and QQ Plot.
+
+Looking at the Fitted vs. Residuals plots for per-region data Improved Interaction Model
+has a roughly 0 mean at all fitted values. The spread of the fitted values is higher
+at lower price than higher prices though not as much. Thus we can conclude our per-region
+data is linear, and has close to constant variance though definitely lower at higher price.
+
+Examining the QQ plots we can see that for individual regions,
+e.g. the Improved Interaction Model, points follow the ideal line even at extremely
+low and high price. Implying that on a per-region basis our residuals are highly normal.
+When the models are fit on global (all-region) data the QQ plot shows deviation at 
+high and low theoretical prices.
+
+The combination of evidence from the BP, Shapiro, Fitted vs. Residuals, and QQ plot
+tests indicates that we adhere to the LINE regression assumptions on a per-region
+basis. Our data is very close to normal and constant variance. When the same model
+is applied to the global (all US) we lose some normality and increase our variance.
+
+With additional work we suspect we could refine the accuracy of the model on the global dataset.
+Using a larger dataset likely exposes our model to a larger set of outlier rows with
+potentially invalid data, this could have a significant affect on our accuracy.
+Also `region` and `state` were identified as a significant predictors from the start, and
+they've been difficult predictors to model. State and region are sometimes colinear,
+sometimes not depending on the region and state in question. Some states are colinear
+some are not.
+
+With a focused analysis on which states are truly significant and
+which are colinear we may have been able to reprocess our dataframe to cluster
+states into more granular regions potentially improving our residual error, normality,
+and constant variance assumptions.
+
+We also considered linking our geographic information, (e.g. latitude, longitude,
+zip_code, state) with other datasets (e.g. demographic, financial) to uncover some
+additional interactions with things like income, age, or climate to improve our
+model. We chose not to due to the data cleaning effort and time constraints but
+we suspect, due to the differences we observed between the regional and global models,
+that a greater focus on geography could improve our model.
+
  
 ---
 
