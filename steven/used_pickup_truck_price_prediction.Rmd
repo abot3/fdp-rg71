@@ -282,10 +282,10 @@ improves both $R^2$ and $RMSE$ (when compared to our hypothesis model) due to
 the increase of predictors. And so, we conclude that the "full" additive model
 provides a better fit to the data. However, looking over the model predictors,
 we can see (and validate some of our initial assumptions) that a number of them
-have high levels of colinearity. In addition, considering the large number of
+have high levels of collinearity. In addition, considering the large number of
 predictors, we further conclude that this "full" model is relatively complex.
 
-Despite the colinear relationships between the added predictors, the "full" model
+Despite the collinear relationships between the added predictors, the "full" model
 still provides helpful insight and a useful foundation from which we can draw
 comparisons against future models. This _base_ "full" model will be used in
 assessing the impact of predictor/response transformations and in our outlier
@@ -302,7 +302,7 @@ print_useful_summary_stats(full_model)
 
 &nbsp;
 
-### ii. Colinearity & Outlier Analysis
+### ii. Collinearity & Outlier Analysis
 With our dataset cleaned and structured, we seek to better understand the
 distributions and correlations found across its variables. The following analysis
 uses histograms to visualize these variable distributions and help to identify
@@ -311,12 +311,12 @@ the attributes we expect, or assume, will be significant in our final model.
 Applying the `pairs` function (generating a scatterplot matrix) and exploring
 covariance functions, we break down the relationships between predictors, as well
 as how they relate to the response. Identifying the linear relationships, which
-indicate colinearity, allows for a first round of model optimization/simplification
-by removing redundant (colinear) predictors. The scatterplot matrix further
+indicate collinearity, allows for a first round of model optimization/simplification
+by removing redundant (collinear) predictors. The scatterplot matrix further
 provides a high-level view of which predictors have a linear, quadratic, or
 logarithmic relationship with the response variable.
 
-After analyzing colinearity and variable distribution we focus in on the observations,
+After analyzing collinearity and variable distribution we focus in on the observations,
 themselves. The project's dataset was scraped from the [Cargurus](https://www.cargurus.com/) website
 with user-generated input and was not filtered or normalized. Upon further analysis,
 we discovered rows containing user errors, e.g - a price of \$10,000 entered as
@@ -348,7 +348,7 @@ hist(as.integer(truck_df$maximum_seating), breaks=30,
 
 &nbsp;
 
-```{r Colinearity Analysis pt. 1, echo=FALSE}
+```{r Collinearity Analysis pt. 1, echo=FALSE}
 pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year")
 pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns]
 pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (1)")
@@ -366,7 +366,7 @@ From **Scatterplot Matrix (1)**:
 
 &nbsp;
 
-```{r Colinearity Analysis pt. 2, echo=FALSE}
+```{r Collinearity Analysis pt. 2, echo=FALSE}
 pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
 pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
 pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (2)")
@@ -374,13 +374,13 @@ pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (2)")
 
 From **Scatterplot Matrix (2)**:
 
-- `power_hp` vs `torque_lb_ft` appear colinear
+- `power_hp` vs `torque_lb_ft` appear collinear
 - `maximum_seating` displays a strong linear relationship with `price`
 - `wheel_system` also shows a strong linear relationship with `price`
 
 &nbsp;
 
-```{r Colinearity Analysis pt. 3, echo=FALSE}
+```{r Collinearity Analysis pt. 3, echo=FALSE}
 pairs_columns3 = c("price", "latitude", "longitude")
 pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
 pairs(pairs_df, col = "dodgerblue", main = "Scatterplot Matrix (3)")
@@ -398,12 +398,12 @@ From **Scatterplot Matrix (3)**:
 
 ##### Variance Inflation Factors
 As a compliment to our `pairs` scatterplot matrices, we examine variance inflation
-factors (`vif`) to determine which predictors are colinear with 1 or more of the
+factors (`vif`) to determine which predictors are collinear with 1 or more of the
 others. The `vif` measures the proportion of the variance within a single predictor
 that can be explained by a linear combination of the other predictors. A high `vif`
-(>5) indicates colinearity.
+(>5) indicates collinearity.
 
-```{r Colinearity Analysis pt. 4, echo=FALSE, warning=FALSE}
+```{r Collinearity Analysis pt. 4, echo=FALSE, warning=FALSE}
 v = vif(full_model)
 v[v > 5]
 ```
@@ -418,12 +418,12 @@ v[v > 5]
 -  This supports some of our initial assumptions made, when drawing our hypothesis
 
 - `height`, `length`, and `owner_count` each have particularly high `vif`
-  - We'd like to better understand with which predictors these are colinear
+  - We'd like to better understand with which predictors these are collinear
 
 - Multiple `regions` and `states` have a high `vif`
   - This will become significant, as we seek to build a global prediction model
 
-```{r Colinearity Analysis pt. 5, echo=TRUE, message=FALSE, warning=FALSE}
+```{r Collinearity Analysis pt. 5, echo=TRUE, message=FALSE, warning=FALSE}
 full_model_no_region_formula = update.formula(
   full_model_formula, ~ . -region -latitude -longitude)
 fm1 = lm(full_model_no_region_formula, data = truck_df)
@@ -442,13 +442,13 @@ from the model. It is worth noting that the factor values of `state` with high
 `vif` have changed. TX and NY now return high `vif` values, while AR, CO, NE, NH
 no longer do.
 
-We found it safe to conclude that `state` is colinear with `region`, and that
-individual factors within the `state` variable are colinear with each other.
+We found it safe to conclude that `state` is collinear with `region`, and that
+individual factors within the `state` variable are collinear with each other.
 
 Removing the `state` predictor results in `region` having a low `vif`. This outcome
-further supports our conclusions on their colinearity.
+further supports our conclusions on their collinearity.
 
-```{r Colinearity Analysis pt. 6, include=FALSE}
+```{r Collinearity Analysis pt. 6, include=FALSE}
 free_memory(pairs_df)
 ```
 
@@ -943,11 +943,11 @@ to larger sets of outlier observations with potentially unusual or invalid data.
 Additionally, we did point out that `region` and `state` were both identified as
 significant predictors from the start of our analysis. Predictors that have
 proven to be difficult to model. `state` and `region` have a high probability of
-being colinear, but may not necessarily be colinear, depending on the region(s)
+being collinear, but may not necessarily be collinear, depending on the region(s)
 and state(s) in question.
 
 Some further analysis regarding which states are truly/particularly significant
-and which are colinear may have allowed us the ability to better process our
+and which are collinear may have allowed us the ability to better process our
 dataset. One idea we had considered was clustering states into more granular
 regions, which may have potentially improved our RMSE, error normality, and
 constant variance assumptions.
