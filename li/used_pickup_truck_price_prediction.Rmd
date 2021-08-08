@@ -1,0 +1,785 @@
+---
+title: 'Final Project: Used Pickup Truck Price Prediction'
+authors: "Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)"
+date: ''
+output:
+  html_document: 
+    theme: readable
+    toc: yes  
+  pdf_document: default
+urlcolor: cyan
+---
+
+***
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+# TODO(anyone) - do we need to include install.packages commands e.g. tidyverse. 
+library(knitr)
+library(readr)
+library(broom)
+library(Metrics)
+library(faraway)
+library(lmtest)
+library(MASS)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+source("Appendix/utility_functions.R")
+source("Appendix/data_cleanup.R")
+```
+
+###### Aaron Botelho (botelho3), Shiyu Li (shiyuli2), Steven Johnson (stevenj4), Li Li (lil6)
+```{r import_cleaned_data, include = FALSE}
+set.seed(12345)
+# TODO(anyone) - How should we import the csv data without adding it to the git repo?
+# For now just copy the .csv into your local git directory?
+truck_df = readr::read_csv("used_truck_data_with_region.csv")
+spec(truck_df)
+
+# TODO(anyone) - this should be replaced with the relevant parts of Appendix/data_cleanup.R.
+# For now since I'm using used_truck_data_with_region.csv part of data_cleanup.R
+# is already done.
+# Edit - hmm the factorization part seems to be in set_data_structure() fn. Maybe 
+# this works.
+truck_df = set_data_structure(truck_df)
+truck_df[truck_df[, "mileage"] < 1.0, "mileage"] = 1.0
+
+# A list of all columns that are _not_ characters or redundant columns
+# (city, lat, long) in the data frame. The vector of column names can be used
+# in formulas
+no_char_columns = c(
+  #X1 = col_double(),
+  #dealer_zip = col_character(),
+ "back_legroom" ,
+  #bed" ,
+  "bed_length" ,
+  #cabin" ,
+  #city" ,
+  "city_fuel_economy" ,
+  "daysonmarket" ,
+  "engine_cylinders" ,
+  "engine_displacement" ,
+  "engine_type" ,
+  "exterior_color" ,
+  "fleet" ,
+  "frame_damaged" ,
+  "franchise_dealer" ,
+  "front_legroom" ,
+  "fuel_tank_volume" ,
+  "fuel_type" ,
+  "has_accidents" ,
+  "height" ,
+  "highway_fuel_economy" ,
+  "horsepower" ,
+  "interior_color" ,
+  "isCab" ,
+  "is_new" ,
+  "latitude" ,
+  "length" ,
+  #listed_date = col_date(format = ""),
+  #listing_color" ,
+  "longitude" ,
+  #make_name" ,
+  "maximum_seating" ,
+  "mileage" ,
+  #model_name" ,
+  "owner_count" ,
+  "salvage" ,
+  #"savings_amount" ,
+  "seller_rating" ,
+  "theft_title" ,
+  "transmission" ,
+  #transmission_display" ,
+  "wheel_system" ,
+  #wheel_system_display" ,
+  "wheelbase" ,
+  "width" ,
+  "year" ,
+  "power_hp" ,
+  "power_rpm" ,
+  "torque_lb_ft" ,
+  "torque_rpm" ,
+  "region" ,
+  "state"
+)
+```
+
+---
+
+### Introduction
+In this statistical study we have conducted an analysis of used pickup truck prices as a response to changes in variable data collected from scraping [Cargurus](https://www.cargurus.com/) inventory in September 2020. The dataset, which was pulled from [Kaggle](https://www.kaggle.com/ananaymital/us-used-cars-dataset), contains observations from the US used car market and was subset to isolate data by `body_type == Pickup Truck`. It was further tailored to highlight relevant variables that provide insights toward predicting our response variable, `price`.
+
+The impetus for our carrying out this analysis was COVID-19. During the pandemic, with unprecedented migration between urban and rural centers, the prices of used vehicles experienced a notable surge. Additionally, the inventory of said vehicles declined in the US, up to 20% year-over-year in some regions. This piqued our interest as a great opportunity to explore significant indicators influencing used pickup truck prices throughout the states.
+
+The prepared dataset is comprised of the following variables:
+
+|Name   |Type   |Description   |
+|:------|:------|:-------------|
+|`back_legroom` |`num` |Legspace for backseat passengers in inches |
+|`bed` |`Factor w/ 4 levels` |Type of truck bed (Long, Short, etc.) |
+|`bed_length` |`num` |Length of truck bed in inches |
+|`cabin` |`Factor w/ 5 levels`|Type of passenger cabin (Crew Cab, Extended Cab, etc.) |
+|`city` |`Factor w/ 4060 levels` |City where vehicle is being sold |
+|`city_fuel_economy` |`num` |MPG mileage in city |
+|`daysonmarket` |`num` |Number of days listed for sale |
+|`dealer_zip` |`Factor w/ 6897 levels` | Zip code of dealer |
+|`engine_cylinders` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`engine_displacement` |`num` |Engine displacement volume |
+|`engine_type` |`Factor w/ 4 levels` |Number of engine cylinders (4, 6, 8, etc.) |
+|`exterior_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`fleet` |`logi` |- - - |
+|`frame_damaged` |`logi` |Indicator for frame damage |
+|`franchise_dealer` |`logi` |- - - |
+|`front_legroom` |`num` |Legspace for frontseat passengers in inches |
+|`fuel_tank_volume` |`num` |Capacity of the fuel tank |
+|`fuel_type` |`Factor w/ 5 levels` |Type of fuel the vehicle uses to operate |
+|`has_accidents` |`logi` |Indicator for whether or not the vehicle has been in an accident |
+|`height` |`num` |Height of vehicle in inches |
+|`highway_fuel_economy` |`num` |MPG mileage in highway |
+|`horsepower` |`num` |Vehicle horsepower |
+|`interior_color` |`Factor w/ 10 levels` |Interior color of vehicle |
+|`isCab` |`logi` |- - - |
+|`is_new` |`logi` |Indicator for a new car |
+|`latitude` |`num` |Geographic latitude |
+|`length` |`num` |Length of the vehicle in inches |
+|`listed_date` |`chr` |Date vehicle was listed for sale |
+|`listing_color` |`Factor w/ 10 levels` |Exterior color of vehicle |
+|`longitude` |`num` |Geographic longitude |
+|`make_name` |`Factor w/ 17 levels` |Manufacturer name |
+|`maximum_seating` |`num` |Maximum number of seats in vehicle |
+|`mileage` |`num` |Odometer reading |
+|`model_name` |`chr` |Model of vehicle from manufacturer |
+|`owner_count` |`num` |Number of previous owners |
+|`price` |`num` |Sale price of used vehicle (Response) |
+|`salvage` |`logi` |Indicator for vehicle being salvage |
+|`savings_amount` |`num` |- - - |
+|`seller_rating` |`num` |Consumer rating of vehicle seller |
+|`theft_title` |`logi` |- - - |
+|`transmission` |`Factor w/ 2 levels`|Automatic or Manual transmission (A or M) |
+|`transmission_display` |`chr` |Transmission display within vehicle |
+|`wheel_system` |`Factor w/ 5 levels` |Vehicle wheel-system (4WD, 4X2, 2WD, etc.) |
+|`wheel_system_display` |`chr` |Vehicle wheel-system display within vehicle |
+|`wheelbase` |`num` |Wheelbase width in inches |
+|`width` |`num` |Width of vehicle in inches |
+|`year` |`num` |Manufactured year of vehicle |
+|`power_hp` |`num` |- - - |
+|`power_rpm` |`num` |- - - |
+|`torque_lb_ft` |`num` |Vehicle torque in foot pounds |
+|`torque_rpm` |`num` |Vehicle torque RPM |
+|`region` |`Factor w/ 9 levels` |US region of vehicle seller |
+|`state` |`Factor w/ 49 levels` |State of vehicle seller |
+
+In creating a linear regression model around these variables, we aim to (not only) identify the significant predictors of price for used pickup trucks, but to seek and potentially offer strategies for consumers to achieve the best value for their money.
+
+---
+
+### Methods
+```{r}
+# TODO
+```
+
+#### Data Cleaning
+```{r}
+# TODO
+```
+
+#### Naive Models
+
+##### Base Model
+
+At the start of our project before we began exploring the data or model fitting,
+we brainstormed as a group what predictors we expected to dbe siginificant
+predictors of price. Each group member came up with their expectations independently.
+We incorporated any predictor that at least 2 group members thought would be
+significant into what we call the base model. The base model represents our
+naive hypothesis of what a good model for car price is. This model will be a useful
+tool, against which we can evaluate better fitting models to determine their
+improvement over baseline intuition.
+
+```{r naive_hypothesis_model, echo=TRUE}
+base_model = lm(price ~ engine_displacement + engine_cylinders +
+                highway_fuel_economy + horsepower+ maximum_seating + transmission +
+                mileage + year + wheel_system + power_hp + bed_length + cabin +
+                  salvage + franchise_dealer, data = truck_df)
+print_useful_summary_stats(base_model)
+```
+
+##### Mega Model
+
+Before continuing with analysis of our data we fit a naive large additive model
+using all numeric and factor predictors with no interactions. Since $R^2$
+increases and $RMSE$ decreases as more predictors are added, this additive model
+should give us a good fit to the data. Many of the predictors will likely be
+redundant.
+
+Regardless this model will provide a baseline against which we can compare more
+optimized models. It can also be used for analyzing the impact of predictor/response
+transformations or used for outlier analysis.
+
+```{r mega_model, echo=TRUE}
+# Create a formual string for a simple additive model using all non-character columns
+mega_model_formula = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+mega_model = lm(mega_model_formula, data = truck_df)
+#summary(mega_model)
+print_useful_summary_stats(mega_model)
+```
+
+
+
+#### Outlier Analysis
+
+After cleaning the trucks dataframe our next step in building the pricing model
+is to understand the distribution of, and correlations in, our dataset. Histograms
+are used to determine the distribution of a few columns we expect will be key to
+the final model.
+
+Pairs plots and covariance functions can be used to determine
+the relationship of predictors to each other, and to the response. Any
+predictors with linear relationships in the pairs plot are collinear and will
+likely be redundant in an optimal model. The scatter plots of each predictor
+against the response variable in the pairs plot provides a rough indication of
+which predictors have a linear, quadratic, or logarithmic relationship with the
+response variable.
+
+After determining the column's colinearity and distribution we turn our attention
+to the rows. Our dataset is scraped from a website with user-generated input and
+has not been filtered. There are certain to be many rows with user errors, e.g
+a 10,000$ car being entered as 100,000\$, or a 4 cylinder car being mistakenly
+listed as 6 cylinders. We cannot manually search the data frame for such
+inconsistencies but we can use outlier analysis, and the standardized residual 
+to discover rows that are many standard deviations from the norm and our model.
+
+To perform the outlier analysis we will use a simple additive model using most
+predictors, with a high R^2, low p-value and reasonable standard error. This 
+simple fit allows us to generate residuals and use tools like rstandard and 
+Cook's Distance.
+
+
+##### Histograms
+
+```{r histogram_analysis, echo=FALSE}
+par(mfrow=c(3,2))
+hist(truck_df$year, breaks=length(unique(truck_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+hist(as.integer(truck_df$state), breaks=length(unique(truck_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State")
+hist(truck_df$horsepower, breaks=30,
+     xlab="Horsepower", ylab = "Frequency", main = "Histogram of Horsepower")
+hist(log10(truck_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage)")
+hist(as.integer(truck_df$maximum_seating), breaks=30,
+     xlab="Maximum Seating", ylab = "Frequency", main = "Histogram of Max seating")
+```
+
+
+##### Pairs Plots
+
+```{r colinearity_analysis, echo=FALSE}
+# TODO(aaronbotelho, li)
+pairs_columns = c("price", "engine_cylinders", "engine_displacement", "mileage", "daysonmarket", "year", "listed_date")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns]
+pairs(pairs_df, col = "dodgerblue")
+```
+
+Notes from Pairs plot. 
+
+- The relationship of price to mileage looks like it might be better modeled by
+1/x. Log(x) would probably work too because of the orders of magnitude.
+- engine_cylinders and engine_displacement are collinear. Let's use
+engine_displacement since it's an integer not a factor.
+- year is almost perfectly linear + quadratic with price.
+- daysonmarket is not very useful lots of noise
+
+```{r colinearity_analysis_2, echo=FALSE}
+pairs_columns2 = c("price", "wheel_system", "power_hp", "torque_lb_ft", "maximum_seating", "owner_count")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+Notes from Pairs plot.
+
+- power_hp and torque_lb_ft are colinear
+- maximum_seating is strongly linear with price.
+- wheel system is also somewhat linear with price.
+
+```{r colinearity_analysis_3, echo=FALSE}
+pairs_columns2 = c("price", "latitude", "longitude")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+Notes from pairs plot:
+
+- Both latitude and longitude have a linear relationship with price, a
+horizontal line.
+- The variance in price vs. latitude or longitude is constant.
+- Latitude and longitude should not be useful predictors of price.
+- The scatter plot of latitude vs. longitude forms a map of the United States!
+
+
+```{r colinearity_analysis_4, echo=FALSE}
+pairs_columns2 = c("price", "region", "state")
+pairs_df = random_rows_from_df(truck_df, 0.10)[, pairs_columns2]
+pairs(pairs_df, col = "darkorange")
+```
+
+##### Variance Inflation Factor
+
+In addition to pairs plots we can use `variance inflation factor (VIF)` to determine
+which predictors are colinear with 1 or more other predictors. The VIF measures
+the what proportion of the variance of a single predictor can be explained by
+a linear combination of the other predictors. A high VIF (>5) implies
+colinearity, i.e. a high percentage of the variation is explained by other
+predictors.
+
+```{r colinearity_analysis_5, echo=TRUE, message=FALSE, warning=FALSE}
+#TODO(anyone) - vif analysis
+v = vif(mega_model)
+v[v > 5]
+```
+
+Key Observations
+
+- `exterior_color` & `interior_color` look to be poor predictors, multiple exterior
+colors have a high VIF.
+
+- `Cylinders`, `engine_type`, `engine_displacement`, `*_fuel_economy`, `horsepower`,
+`power_rpm` and `torque_lb_ft` have a high VIF. It makes some sense that these could
+be colinear with each other. Which are the most important predictors?
+
+- height (``r v["height"]``), length (``r v["length"]``),
+owner_count (``r v["owner_count"]``) have very, very high VIFs. What are these
+colinear with?
+
+- Multiple `regions` and `states` have a high VIF. Is this colinearity between
+regions and states? What happens if we remove one of the two predictors.
+
+```{r colinearity_analysis_6, echo=TRUE, message=FALSE, warning=FALSE}
+mega_model_no_region_formula = update.formula(
+  mega_model_formula, ~ . -region -latitude -longitude)
+mm2 = lm(mega_model_no_region_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(mm2)
+v[v > 5]
+```
+
+The state predictor still has a high VIF even without region in the model. The list
+of states with high VIFs changed though. TX, NY now have a high VIF. AR, CO, NE,
+NH no longer have a high VIF.
+
+It's safe to say state is colinear with region, and individual states within the
+state factor are colinear with each other.
+
+```{r colinearity_analysis_7, echo=TRUE, message=FALSE, warning=FALSE}
+mega_model_no_state_formula = update.formula(mega_model_formula, ~ . -state -latitude -longitude)
+mm3 = lm(mega_model_no_state_formula, data = truck_df)
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+v = vif(mm3)
+v[v > 5]
+```
+
+Removing the state predictor results in region having low VIF. Thus state and
+region are somewhat colinear.
+
+```{r colinearity_analysis_last, include=FALSE}
+free_memory(pairs_df)
+```
+
+##### Outlier Removal
+
+Next we attempt to identify outliers, observations which do not fit the model well,
+and which may have significant impact on the coefficients of the model. Often
+these observations will have large residuals.
+
+```{r outlier_analysis_1, echo=TRUE}
+#rstandard 
+#cooks.distance 
+#2 Naive Models (mega model and “common” model) - Aaron or Anyone 
+# Fit a simple additive model using all non-character columns as predictors. This
+# will be a representative model for detecting outliers.
+columns_of_interest = setdiff(no_char_columns, c("latitude", "longitude"))
+no_char_additive_formula = formula(paste("price ~", paste("", columns_of_interest, sep = " ", collapse = " +")))
+outlier_fit_add = lm(no_char_additive_formula, data = truck_df)
+print_useful_summary_stats(outlier_fit_add)
+```
+
+The representative model has a high $R^2$, low p-value and low RMSE. We can use
+it to detect outliers.
+
+First look at the standardized residuals. By dividing the residuals by the standard
+error the rstandard follows a normal distribution with mean 0 and stddev of 1.
+We can look at the number of observations with standardized redisuals 1,2,3,4
+standard deviations from the mean. The higher the deviation the worse the
+observation fit our model and may have high influence.
+
+```{r outlier_analysis_1.1, echo=TRUE}
+count_gt_stddev = c(length(which(rstandard(outlier_fit_add) > 1)),
+  length(which(rstandard(outlier_fit_add) > 2)),
+  length(which(rstandard(outlier_fit_add) > 3)),
+  length(which(rstandard(outlier_fit_add) > 4)))
+number_of_stddevs = c(1,2,3,4)
+model_results = data.frame(number_of_stddevs, count_gt_stddev)
+colnames(model_results) = c("# of stddev", "Count of rows > stddev")
+knitr::kable(model_results)
+```
+
+We have ``r count_gt_stddev[3]` rows > 3 stddev` and ``r count_gt_stddev[4]` rows > 4 stddev` 
+from the mean. These may affect the model if they have high leverage.
+
+```{r outlier_analysis_1.2, echo = TRUE}
+# Do some Cook's distance tests. Large Cook's distance implies high influence
+high_influence_rows = which(cooks.distance(outlier_fit_add) > 4/length(outlier_fit_add$residuals))
+length(high_influence_rows)
+# The intersection of the set of large-outlier, high-influnce is a high percentage.
+# Let's remove these from the dataset.
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 3), high_influence_rows)
+pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] * 100
+pct
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
+pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] * 100
+pct
+```
+
+A very high percentage (``r pct`%`) of large-residual outlier rows are also high
+leverage, and therefore have high influence. These observations are good
+candidates for exclusion.
+
+
+```{r outlier_analysis_2, echo=TRUE, results='hide'}
+# Take a look at the outlier rows to see if there's any commonality in the 
+# data.
+outlier_rows_to_remove = intersection_of_high_inf_high_outlier 
+outlier_df = truck_df[outlier_rows_to_remove, ]
+# So many Jeep Gladiators in outliers!
+nrow(outlier_df[outlier_df[,"model_name"] == c("gladiator", "Gladiator"), ]) /
+    nrow(outlier_df) * 100
+# So many F150s
+nrow(outlier_df[outlier_df[,"model_name"] == c("F-150", "F150"), ]) /
+    nrow(outlier_df) * 100
+# So many 4x4s
+nrow(outlier_df[outlier_df[,"wheel_system"] == c("4WD"), ]) /
+    nrow(outlier_df) * 100
+```
+
+
+```{r outlier_analysis_3, echo=FALSE}
+par(mfrow=c(2,2))
+hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year (Outliers only)")
+hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
+     xlab="State", ylab = "Frequency", main = "Histogram of State (Outliers only)")
+hist(log10(outlier_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage) (Outliers only)")
+
+# There's a modest improvement in R2 0.01 or 1%. The std error drops ~100. The
+# fitted vs. residuals plot becomes waaaay more useful.
+#ofit1 = lm(price ~ year + I(year^2) + engine_displacement + mileage + I(mileage^2) +
+#   maximum_seating + wheel_system + power_hp + bed_length +
+#  frame_damaged + salvage + state,
+#   data = truck_df[-outlier_rows_to_remove, ])
+#summary(ofit1)
+#plot_fitted_resid(ofit1)
+#
+#ofit2 = lm(price ~ year + I(year^2) + engine_displacement + log(mileage) +
+#             I(mileage^2) + mileage +
+#   maximum_seating + wheel_system + power_hp + bed_length +
+#  frame_damaged + salvage + state,
+#   data = truck_df[-outlier_rows_to_remove, ])
+#summary(ofit2)
+#anova(ofit1, ofit2)
+```
+
+Let's try removing some of these poorly fit points and see what happens to the
+model.
+
+Re-fit the mega_model with the outlier observations removed. The outlier rows
+we removed were very influential based on their rstandard and Cook's distance
+results. See if the beta coefficients change significantly or if the RMSE
+changes.
+
+```{r outlier_analysis_4, echo=TRUE}
+#formula_str = formula(paste("price ~", paste("", no_char_columns, sep = " ", collapse = " +")))
+#formula_str = update.formula(formula_str,  ~ . + log(mileage))
+no_outlier_fit_add = lm(no_char_additive_formula, data = truck_df[-outlier_rows_to_remove,])
+#summary(no_outlier_fit_add)
+print_useful_summary_stats(no_outlier_fit_add)
+# Percentage change in model coefficients.
+pct_chng_in_model_coeff = abs(
+  (coef(no_outlier_fit_add) - coef(outlier_fit_add)) /
+    coef(no_outlier_fit_add)) * 100
+# Which coefficients changed more than 10%?
+pct_chng_in_model_coeff[pct_chng_in_model_coeff > 10.0]
+#anova(mega_model, ofit2_no_outliers)
+```
+Plot fitted vs residuals for a) all data, b) data with large outlier rows removed.
+
+```{r outlier_analysis_5, echo=FALSE}
+plot_fitted_resid(outlier_fit_add)
+plot_fitted_resid(no_outlier_fit_add)
+```
+
+
+It's clear from the code segment above that the RMSE and $R^2$ value of the
+model is mostly unaffected by removal of the outlier rows. However there is a large
+percentage change ~3%-9% in some of the model beta coefficients when refitting
+the model.
+
+
+```{r outlier_analysis_last, include=FALSE}
+#free_memory(ofit1)
+#free_memory(ofit2)
+#free_memory(fit2_additive_all)
+free_memory(no_outlier_fit_add)
+free_memory(outlier_fit_add)
+```
+
+```{r tbd_remove_outliers_from_truck_df, include=FALSE}
+#truck_df = truck_df[-outlier_rows_to_remove, ]
+```
+
+
+#### Model Exploration And Selection
+
+We stated from regional analysis, divided and conquered by everyone in the team. After model explorations(more details can be found in appendix), we found there are no differences that are as significant as we initially thought among regions, so we landed on a base model with common predictors that are significant among different regions. From the base model and mega model, we tried different model selection techniques to arrive on a regional prediction model. Here we will use Mid atlantic region(NY, PA, NJ) as an example for illustration purpose. 
+
+```{r}
+# split train and test
+trn_idx = sample(nrow(truck_df), nrow(truck_df)*0.8)
+truck_df_trn = truck_df[trn_idx, ]
+truck_df_tst = truck_df[-trn_idx, ]
+```
+
+
+```{r}
+mid_altantic_data = truck_df_trn[truck_df_trn$region == "Mid Atlantic",]
+drops = c("region")
+mid_altantic_data = mid_altantic_data[ , !(names(mid_altantic_data) %in% drops)]
+```
+
+```{r}
+# base model 
+base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
+base_predictors_formula = formula(paste("price ~", paste("", base_predictors, sep = " ", collapse = " +")))
+mid_altantic_base_model = lm(base_predictors_formula, data = mid_altantic_data)
+base_predictors_formula
+print_useful_summary_stats(mid_altantic_base_model)
+```
+
+```{r}
+# mega model 
+mid_altantic_mega_model = lm(price~., data = mid_altantic_data)
+print_useful_summary_stats(mid_altantic_mega_model)
+```
+
+
+```{r}
+# Apply BIC on base model
+# choose BIC over AIC because we want to have less predictors in our model
+nb = length(resid(mid_altantic_base_model))
+base_model_bic = step(mid_altantic_base_model, direction = "backward", k = log(nb), trace = 0)
+summary(base_model_bic)
+print_useful_summary_stats(base_model_bic)
+```
+
+
+```{r}
+# Added interaction on base model to find important interaction terms 
+
+base_predictors = c("engine_displacement", "engine_cylinders", "highway_fuel_economy", "horsepower", "maximum_seating", "transmission", "mileage", "year", "wheel_system", "power_hp", "bed_length", "cabin", "salvage", "franchise_dealer" )
+base_interactions = combn(base_predictors, 2, FUN = paste, collapse = ":")
+base_interactions_predictors = c(base_predictors, base_interactions)
+base_predictors_formula = formula(paste("price ~", paste("", base_interactions_predictors, sep = " ", collapse = " +")))
+mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(mid_altantic_inter_model)
+```
+
+Here we found adding two-way interaction terms are really significant for model improvements, based on p-values, we added most significant interaction terms to the base model in order to reduce the total number of predictors.
+```{r}
+significant_inter_predictors = c("year:bed_length", "year:mileage", "maximum_seating:bed_length", 
+      "engine_cylinders:highway_fuel_economy", "engine_cylinders:horsepower", "engine_displacement:engine_cylinders",       "engine_displacement:highway_fuel_economy")
+improved_interactions_predictors = c(base_predictors, significant_inter_predictors)
+base_predictors_formula = formula(paste("price ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+improved_mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+base_predictors_formula
+print_useful_summary_stats(improved_mid_altantic_inter_model)
+```
+
+
+
+
+
+#### Variable Transformations
+
+From Box-Cox analysis, Log-Likelihood reaches maximum when $\lambda$ is from 0 to 0.5. Therefore we choose to have a log transformation on price.
+
+
+```{r}
+boxcox(improved_mid_altantic_inter_model, plotit = TRUE)
+```
+
+```{r}
+# Residual vs fitted plot for improved_mid_altantic_inter_model
+plot_fitted_resid(improved_mid_altantic_inter_model)
+# qq plot for improved_mid_altantic_inter_model
+plot_qq(improved_mid_altantic_inter_model)
+```
+
+```{r}
+# response log-transformed model
+base_predictors_formula = formula(paste("log(price) ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+log_mid_altantic_inter_model = lm(base_predictors_formula, data = mid_altantic_data)
+print_useful_summary_stats(log_mid_altantic_inter_model)
+```
+```{r}
+plot_fitted_resid(log_mid_altantic_inter_model)
+```
+
+Comparing the fitted vs residual plot before and after the response log-transformation as well as the results from the log model, we can see response log-transformation is really significant on model improvements.
+
+
+
+
+
+#### Prediction on US data of the models
+
+
+```{r}
+num_size = 2000
+
+tst_idx = sample(nrow(truck_df_tst), num_size)
+
+tst_data = truck_df_tst[tst_idx,]
+
+
+## base model prediction
+prd_base_err = predict(mid_altantic_base_model, tst_data) - tst_data$price
+
+prd_base_err_mean = mean(prd_base_err)
+
+prd_base_err_std = sd(prd_base_err)
+
+hist(prd_base_err,breaks = 100, main = "Residual distribution of Base model")
+
+
+## Mega model prediction
+#We are unable to predict using mega model because the extra zipcodes in test data set give output as NA.
+
+## BIC model prediction
+prd_bic_err = predict(base_model_bic, tst_data) - tst_data$price
+
+prd_bic_err_mean = mean(prd_bic_err)
+
+prd_bic_err_std = sd(prd_bic_err)
+
+hist(prd_bic_err,breaks = 100, main = "Residual distribution of BIC model")
+
+
+## Interaction model prediction
+prd_bicint_err = predict(mid_altantic_inter_model, tst_data) - tst_data$price
+
+prd_bicint_err_mean = mean(prd_bicint_err)
+
+prd_bicint_err_std = sd(prd_bicint_err)
+
+hist(prd_bicint_err,breaks = 100, main = "Residual distribution of interaction model")
+
+
+## Improved Interaction model prediction
+prd_imp_bicint_err = predict(improved_mid_altantic_inter_model, tst_data) - tst_data$price
+
+prd_bicint_err_mean = mean(prd_imp_bicint_err)
+
+prd_bicint_err_std = sd(prd_imp_bicint_err)
+
+hist(prd_imp_bicint_err,breaks = 100, main = "Residual distribution of improved interaction model")
+
+
+## Log transformation model prediction
+
+
+prd_log_err = exp(predict(log_mid_altantic_inter_model, tst_data)) - tst_data$price
+
+prd_log_err_mean = mean(prd_log_err)
+
+prd_log_err_std = sd(prd_log_err)
+
+hist(prd_log_err,breaks = 100, main = "Residual distribution of Log transformation of improved interaction model (Price)")
+
+
+
+
+```
+
+
+
+
+
+
+#### Further Anova Analysis 
+
+At this point, we are pretty confident that we have landed on a good regional used pickup truck price predition model. In order to arrive a good global model across US, we need to do further anova tests to determine the significance of regions.
+```{r}
+# Apply best regional model  to all us data
+base_predictors_formula = formula(paste("log(price) ~", paste("", improved_interactions_predictors, sep = " ", collapse = " +")))
+regional_model = lm(base_predictors_formula, data = truck_df_trn)
+print_useful_summary_stats(regional_model)
+```
+
+```{r}
+# Anova test on region
+add_region = c(improved_interactions_predictors, "region")
+formula = formula(paste("log(price) ~", paste("", add_region, sep = " ", collapse = " +")))
+global_model_add_region = lm(formula, data = truck_df_trn)
+print_useful_summary_stats(global_model_add_region)
+anova(regional_model, global_model_add_region)["Pr(>F)"]
+```
+
+As we can see from the anova test, region is a significant predictor, so we would like to keep it as an additional predictor in our model. With that, we are confident that we have arrived on a good global model. 
+
+---
+
+### Results
+
+#### Model comparison table
+```{r, echo = FALSE}
+base_model = comparison_stats(mid_altantic_base_model)
+mega_modle = comparison_stats(mid_altantic_mega_model)
+base_bic_model = comparison_stats(base_model_bic)
+base_interaction_model = comparison_stats(mid_altantic_inter_model)
+improved_interaction_model= comparison_stats(improved_mid_altantic_inter_model)
+log_model = comparison_stats(log_mid_altantic_inter_model)
+stats = rbind(base_model, mega_modle, base_bic_model, base_interaction_model, improved_interaction_model, log_model)
+knitr::kable(stats)
+```
+
+#### Model Analysis
+```{r}
+# lm assumption test
+plot_fitted_resid(global_model_add_region)
+plot_qq(global_model_add_region)
+```
+
+```{r, warning=FALSE}
+# test-rmse
+rmse_trn = sqrt(mean((truck_df_trn$price - predict(global_model_add_region, truck_df_trn)) ^ 2))
+rmse_tst = sqrt(mean((truck_df_tst$price - predict(global_model_add_region, truck_df_tst)) ^ 2))
+```
+
+---
+
+### Discussion
+```{r}
+# TODO
+```
+ 
+---
+
+### Appendix
+```{r}
+# TODO
+```
+
+***
