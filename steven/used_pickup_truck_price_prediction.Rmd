@@ -23,6 +23,7 @@ library(stringr)
 library(dplyr)
 library(faraway)
 library(lmtest)
+library(MASS)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
 ```
 
@@ -620,7 +621,7 @@ base_predictors_formula = formula(paste("price ~", paste("", base_interactions_p
 mid_atlantic_int_model = lm(base_predictors_formula, data = mid_atlantic_data)
 print_useful_summary_stats(mid_atlantic_int_model)
 
-# refit model with identified significant interactions
+# refit model with identified significant interactions using the predictors' p-values
 significant_int_predictors = c("year:bed_length",
                                "year:mileage",
                                "maximum_seating:bed_length",
@@ -726,7 +727,7 @@ demonstrated analysis and selection techniques to finalize a region-agnostic
 From the above table, it quickly becomes clear why we have chosen the `log`
 response model as our final prediction model.
 
-Starting with the base model, a $R^2$ of 0.7528 is among the lowest that we found
+Starting with the base model, a $R^2$ of 0.7536 is among the lowest that we found
 across all of our linear models. This comes as no surprise, however, given we
 started with a simple and "naive" approach.
 
