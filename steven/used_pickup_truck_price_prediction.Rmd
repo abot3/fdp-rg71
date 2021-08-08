@@ -69,16 +69,16 @@ set_data_structure = function(dataset) {
 }
 
 # plot fitted vs residuals
-plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange", main="Fitted vs. Residuals") {
   plot(fitted(model), resid(model),
        col = pointcol, pch = 20, cex = 1.5,
-       xlab = "Fitted", ylab = "Residuals")
+       xlab = "Fitted", ylab = "Residuals", main=main)
   abline(h = 0, col = linecol, lwd = 2)
 }
 
 # Q-Q plot
-plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
-  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange", main = "Normal Q-Q Plot") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5, main=main)
   qqline(resid(model), col = linecol, lwd = 2)
 }
 
@@ -340,8 +340,8 @@ hist(as.integer(truck_df$state), breaks=length(unique(truck_df$state)),
      xlab="State", ylab = "Frequency", main = "Histogram of State")
 hist(truck_df$horsepower, breaks=30,
      xlab="Horsepower", ylab = "Frequency", main = "Histogram of Horsepower")
-hist(log(truck_df$mileage), breaks=30,
-     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+hist(log10(truck_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage)")
 hist(as.integer(truck_df$maximum_seating), breaks=30,
      xlab="Maximum Seating", ylab = "Frequency", main = "Histogram of Max seating")
 ```
@@ -361,7 +361,7 @@ From **Scatterplot Matrix (1)**:
 - `engine_cylinders` vs `engine_displacement` are clearly collinear
   - Our model will include `engine_displacement` over `engine_cylinders`
   - This decision is driven by our preference for a `num` variable over a `factor`
-- `year` is nearly perfectly linear and quadratic with our response, `price`
+- `year` is nearly perfectly linear plus quadratic (x + x^2) with our response, `price`
 - `daysonmarket` is, to our surprise, not useful and adds lots of noise
 
 &nbsp;
@@ -479,8 +479,10 @@ knitr::kable(model_results)
 high_influence_rows = which(cooks.distance(outlier_fit_add) > 4 / length(outlier_fit_add$residuals))
 length(high_influence_rows)
 intersection_of_high_inf_high_outlier = intersect(
-  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
+  which(rstandard(outlier_fit_add) > 3), high_influence_rows)
 (pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[3] * 100)
+intersection_of_high_inf_high_outlier = intersect(
+  which(rstandard(outlier_fit_add) > 4), high_influence_rows)
 (pct = length(intersection_of_high_inf_high_outlier) / count_gt_stddev[4] * 100)
 
 # analyze outlier rows to check for commonality
@@ -499,11 +501,11 @@ good candidates for exclusion from our dataset.
 par(mfrow=c(2,2))
 
 hist(outlier_df$year, breaks=length(unique(outlier_df$year)),
-     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year")
+     xlab="Year", ylab = "Frequency", main = "Histogram of Model Year Outliers")
 hist(as.integer(outlier_df$state), breaks=length(unique(outlier_df$state)),
-     xlab="State", ylab = "Frequency", main = "Histogram of State")
-hist(log(outlier_df$mileage), breaks=30,
-     xlab="log(Mileage)", ylab = "Frequency", main = "Histogram of log(Mileage)")
+     xlab="State", ylab = "Frequency", main = "Histogram of State Outliers")
+hist(log10(outlier_df$mileage), breaks=30,
+     xlab="log10(Mileage)", ylab = "Frequency", main = "Histogram of log10(Mileage) Outliers")
 ```
 
 We continue our exploration by refitting the "full" model with outliers removed
@@ -534,7 +536,7 @@ From the above code chunk, we find that the $RMSE$ and $R^2$ values of the model
 are, mostly, unaffected by the removal of outlier observations. There is, however,
 a large percentage change (~50 - 400%) in some of the model's coefficients ($\beta$)
 after refitting. We conclude that this change is rather significant, considering
-there are only ``r count_gt_stddev[4]` outlier rows > 4 stddev``
+there are only ``r count_gt_stddev[4]` outlier rows > 4 stddev`
 and ``r nrow(truck_df)`` in the dataset.
 
 We now continue our analysis with the influential outliers removed from our
@@ -744,7 +746,7 @@ results that are not far off from our initial "naive" base model.
 As a result of our findings across the base, full, and backwards BIC models, we
 decided to introduce model interactions. In our base interaction model, we make
 use of all significant predictors along with all two-way interactions between them.
-In doing so, we found some imrpovements to the $R^2$ and RMSE. In fact, they wound
+In doing so, we found some improvements to the $R^2$ and RMSE. In fact, they wound
 up very close to the full additive model. Alas, as we found with the full additive
 model, the number of predictors becomes painfully extraordinarily large relative
 to the other models, making the base interaction model both complex and difficult
@@ -847,10 +849,10 @@ hist(prd_log_err, breaks = 100, main = "Residual Distribution of Log Response Mo
 ```{r Model FvR Plots}
 par(mfrow=c(2,2))
 
-plot_fitted_resid(mid_atlantic_base_model)
-plot_fitted_resid(mid_atlantic_full_model)
-plot_fitted_resid(improved_mid_atlantic_int_model)
-plot_fitted_resid(log_mid_atlantic_int_model)
+plot_fitted_resid(mid_atlantic_base_model, main="Base Model Fitted vs. Residuals")
+plot_fitted_resid(mid_atlantic_full_model, main="Full Model Fitted vs. Residuals")
+plot_fitted_resid(improved_mid_atlantic_int_model, main="Improved Interaction Model Fitted vs. Residuals")
+plot_fitted_resid(log_mid_atlantic_int_model, main="Log Response Model Fitted vs. Residuals")
 ```
 
 _Base Model (top-left), Full Model (top-right), Improved Interaction Model (bottom-left), Log Response Model (bottom-right)_
@@ -860,10 +862,10 @@ _Base Model (top-left), Full Model (top-right), Improved Interaction Model (bott
 ```{r Model QQ Plots}
 par(mfrow=c(2,2))
 
-plot_qq(mid_atlantic_base_model)
-plot_qq(mid_atlantic_full_model)
-plot_qq(improved_mid_atlantic_int_model)
-plot_qq(log_mid_atlantic_int_model)
+plot_qq(mid_atlantic_base_model, main="Base Model Q-Q Plot")
+plot_qq(mid_atlantic_full_model, main="Full Model Q-Q Plot")
+plot_qq(improved_mid_atlantic_int_model, main="Improved Interaction Model Q-Q Plot")
+plot_qq(log_mid_atlantic_int_model, main="Log Response Model Q-Q Plot")
 ```
 
 _Base Model (top-left), Full Model (top-right), Improved Interaction Model (bottom-left), Log Response Model (bottom-right)_
